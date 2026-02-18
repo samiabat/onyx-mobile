@@ -123,4 +123,57 @@ export const BADGES: Badge[] = [
     const taggedTrades = history.filter(t => t.tags && t.tags.length > 0);
     return taggedTrades.length >= 10;
   }},
+  // --- ELITE / GOD-TIER BADGES ---
+  { id: 'the_oracle', name: 'The Oracle', emoji: '🔮', description: '100% Win Rate over 50 trades.', check: ({ history }) => {
+    if (history.length < 50) return false;
+    const sorted = [...history].sort((a, b) => (Number(a.closedAt ?? a.id) || 0) - (Number(b.closedAt ?? b.id) || 0));
+    const last50 = sorted.slice(-50);
+    return last50.every(t => t.realizedProfit > 0);
+  }},
+  { id: 'market_maker', name: 'Market Maker', emoji: '💰', description: 'Reach a total net profit of $1,000,000.', check: ({ history }) => {
+    const totalProfit = history.reduce((sum, t) => sum + (t.realizedProfit || 0), 0);
+    return totalProfit >= 1000000;
+  }},
+  { id: 'iron_mind', name: 'Iron Mind', emoji: '🧠', description: 'Journal trades for 365 consecutive days.', check: ({ history }) => {
+    if (history.length === 0) return false;
+    const days = new Set(history.map(t => {
+      const d = new Date(t.closedAt ?? t.id);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }));
+    const sortedDays = [...days].sort();
+    let maxStreak = 1, streak = 1;
+    for (let i = 1; i < sortedDays.length; i++) {
+      const prev = new Date(sortedDays[i - 1] + 'T00:00:00');
+      const curr = new Date(sortedDays[i] + 'T00:00:00');
+      const diff = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
+      if (Math.round(diff) === 1) { streak++; maxStreak = Math.max(maxStreak, streak); } else { streak = 1; }
+    }
+    return maxStreak >= 365;
+  }},
+  { id: 'liquidity_hunter', name: 'Liquidity Hunter', emoji: '🦈', description: 'Close a single trade with a Risk:Reward of 1:20+.', check: ({ history }) => {
+    return history.some(t => t.realizedProfit > 0 && t.risk > 0 && (t.realizedProfit / t.risk) >= 20);
+  }},
+  { id: 'century_club', name: 'Century Club', emoji: '💯', description: 'Log 1,000 trades total.', check: ({ history }) => history.length >= 1000 },
+  { id: 'the_stoic', name: 'The Stoic', emoji: '🧘', description: 'No more than 2 trades per day for 90 consecutive days.', check: ({ history }) => {
+    if (history.length === 0) return false;
+    const dayCounts: Record<string, number> = {};
+    history.forEach(t => {
+      const d = new Date(t.closedAt ?? t.id);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      dayCounts[key] = (dayCounts[key] || 0) + 1;
+    });
+    const sortedDays = Object.keys(dayCounts).sort();
+    let streak = 0;
+    for (let i = 0; i < sortedDays.length; i++) {
+      if (dayCounts[sortedDays[i]] > 2) { streak = 0; continue; }
+      if (i === 0 || streak === 0) { streak = 1; } else {
+        const prev = new Date(sortedDays[i - 1] + 'T00:00:00');
+        const curr = new Date(sortedDays[i] + 'T00:00:00');
+        const diff = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+        streak = diff === 1 ? streak + 1 : 1;
+      }
+      if (streak >= 90) return true;
+    }
+    return false;
+  }},
 ];

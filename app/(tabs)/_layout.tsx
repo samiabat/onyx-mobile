@@ -419,7 +419,6 @@ export default function OnyxApp() {
       {/* VIEW: PERFORMANCE */}
       {view === 'performance' && (
         <ScrollView contentContainerStyle={s.scrollContent}>
-          <Text style={s.screenTitle}>PERFORMANCE</Text>
 
           {/* P&L CALENDAR HEATMAP - FIRST */}
           <View style={s.perfSection}>
@@ -675,21 +674,28 @@ export default function OnyxApp() {
 
           {/* PORTFOLIO SUMMARY - Compact */}
           <View style={{backgroundColor: theme.card, borderRadius: 10, borderWidth: 1, borderColor: theme.border, padding: 14, marginBottom: 12}}>
-            <Text style={{color: theme.subText, fontSize: 10, fontWeight: '600', letterSpacing: 0.5}}>TOTAL VALUE</Text>
-            <Text style={{color: theme.text, fontSize: 24, fontWeight: '900', marginTop: 2}}>${portfolioAnalytics.currentValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4}}>
-              <Text style={{color: portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger, fontSize: 13, fontWeight: '700'}}>
-                {portfolioAnalytics.totalPnL >= 0 ? '+' : ''}${portfolioAnalytics.totalPnL.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-              </Text>
-              <View style={{backgroundColor: (portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger) + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-                <Text style={{color: portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger, fontSize: 11, fontWeight: '700'}}>
-                  {portfolioAnalytics.totalPnLPercent >= 0 ? '+' : ''}{portfolioAnalytics.totalPnLPercent.toFixed(2)}%
-                </Text>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start'}}>
+              <View>
+                <Text style={{color: theme.subText, fontSize: 10, fontWeight: '600', letterSpacing: 0.5}}>CURRENT VALUE</Text>
+                <Text style={{color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 2}}>${portfolioAnalytics.currentValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
+              </View>
+              <View style={{alignItems: 'flex-end'}}>
+                <Text style={{color: theme.subText, fontSize: 10, fontWeight: '600', letterSpacing: 0.5}}>P&L</Text>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2}}>
+                  <Text style={{color: portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger, fontSize: 16, fontWeight: '600'}}>
+                    {portfolioAnalytics.totalPnL >= 0 ? '+' : ''}${portfolioAnalytics.totalPnL.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </Text>
+                  <View style={{backgroundColor: (portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger) + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+                    <Text style={{color: portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger, fontSize: 11, fontWeight: '700'}}>
+                      {portfolioAnalytics.totalPnLPercent >= 0 ? '+' : ''}{portfolioAnalytics.totalPnLPercent.toFixed(2)}%
+                    </Text>
+                  </View>
+                </View>
               </View>
             </View>
             <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderColor: theme.border}}>
-              <View><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>INVESTED</Text><Text style={{color: theme.text, fontSize: 13, fontWeight: '700'}}>${portfolioAnalytics.totalInvested.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text></View>
-              <View style={{alignItems: 'flex-end'}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>ASSETS</Text><Text style={{color: theme.text, fontSize: 13, fontWeight: '700'}}>{investments.length}</Text></View>
+              <View><Text style={{color: theme.subText, fontSize: 10, fontWeight: '600', letterSpacing: 0.5}}>INVESTED</Text><Text style={{color: theme.text, fontSize: 16, fontWeight: '600'}}>${portfolioAnalytics.totalInvested.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text></View>
+              <View style={{alignItems: 'flex-end'}}><Text style={{color: theme.subText, fontSize: 10, fontWeight: '600', letterSpacing: 0.5}}>ASSETS</Text><Text style={{color: theme.text, fontSize: 16, fontWeight: '600'}}>{investments.length}</Text></View>
             </View>
           </View>
 
