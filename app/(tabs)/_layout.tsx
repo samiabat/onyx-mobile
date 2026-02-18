@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 
-import { APP_NAME, THEMES, TRADES_PER_PAGE, PREDEFINED_ASSETS } from '@/constants/appConfig';
+import { APP_NAME, THEMES, TRADES_PER_PAGE, PREDEFINED_ASSETS, RANK_OPTIONS, TRADING_STYLE_OPTIONS, BADGES } from '@/constants/appConfig';
 import { runSimulation, computeDailyPnL, type Rule, type Strategy, type Investment, type DailyPnL } from '@/utils/calculators';
 import { generatePlaybookPDF, generateDetailedPDF } from '@/services/pdfService';
 import { searchCoins, type CoinLoreAsset } from '@/services/coinloreService';
@@ -57,7 +57,7 @@ export default function OnyxApp() {
 
   // --- PORTFOLIO HOOK ---
   const {
-    investments, portfolioAnalytics, portfolioHistory, isRefreshing,
+    investments, setInvestments, portfolioAnalytics, portfolioHistory, isRefreshing,
     addInvestment, updateCurrentPrice, updateInvestmentImages, deleteInvestment,
     refreshCryptoPrices,
   } = usePortfolioData();
@@ -203,7 +203,7 @@ export default function OnyxApp() {
 
   const onExportData = async () => {
     setLoading(true);
-    try { await exportData(history, activeTrades, strategies, tags, profile); }
+    try { await exportData(history, activeTrades, strategies, tags, profile, investments); }
     catch (e: any) { Alert.alert("Export Failed", e.message); }
     finally { setLoading(false); }
   };
@@ -214,6 +214,7 @@ export default function OnyxApp() {
       const data = await importData();
       if (data) {
         applyImportedData(data);
+        if (data.investments) setInvestments(data.investments);
         Alert.alert("Success", "Restored.");
         setTimeout(() => saveData(), 1000);
       }
@@ -344,7 +345,11 @@ export default function OnyxApp() {
       
       {/* HEADER */}
       <View style={s.navHeader}>
-        <TouchableOpacity onPress={() => setStrategyModal(true)} style={s.strategyBadge}><Feather name="layers" size={14} color={theme.btnText} /><Text style={s.strategyText}>{activeStrategy.name}</Text><Feather name="chevron-down" size={12} color={theme.btnText} /></TouchableOpacity>
+        {view === 'portfolio' ? (
+          <Text style={{color: theme.text, fontWeight: '900', fontSize: 16, letterSpacing: 2}}>PORTFOLIO</Text>
+        ) : (
+          <TouchableOpacity onPress={() => setStrategyModal(true)} style={s.strategyBadge}><Feather name="layers" size={14} color={theme.btnText} /><Text style={s.strategyText}>{activeStrategy.name}</Text><Feather name="chevron-down" size={12} color={theme.btnText} /></TouchableOpacity>
+        )}
         <View style={{flexDirection: 'row', gap: 16}}>
           <TouchableOpacity onPress={() => setView('profile')}><Feather name="user" size={20} color={view === 'profile' ? theme.tint : theme.subText} /></TouchableOpacity>
           <TouchableOpacity onPress={() => setThemeMode(themeMode === 'dark' ? 'light' : 'dark')}><Feather name={themeMode === 'dark' ? 'sun' : 'moon'} size={20} color={theme.subText} /></TouchableOpacity>
@@ -570,17 +575,89 @@ export default function OnyxApp() {
       {view === 'profile' && (
         <ScrollView contentContainerStyle={s.scrollContent}>
           <Text style={s.screenTitle}>PROFILE</Text>
+
+          {/* Data Safety Warning Card */}
+          <View style={[s.activeCard, {marginBottom: 20, borderColor: '#F59E0B', borderWidth: 2}]}>
+            <Text style={{color: '#F59E0B', fontSize: 16, fontWeight: '900', marginBottom: 8}}>⚠️ READ BEFORE UNINSTALLING</Text>
+            <Text style={{color: theme.text, fontSize: 13, lineHeight: 20, marginBottom: 12}}>
+              ONYX is 100% Offline. If you uninstall this app, your data is deleted forever. Click &apos;Backup Data&apos; below to save a file to your device first.
+            </Text>
+            <TouchableOpacity onPress={onExportData} style={[s.actionBtn, {gap: 8}]}>
+              <Feather name="download" size={16} color={theme.btnText} />
+              <Text style={s.actionBtnText}>BACKUP DATA</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Identity Section */}
           <View style={[s.activeCard, {marginBottom: 20}]}>
             <Text style={s.label}>IDENTITY</Text>
             <TextInput style={[s.inputField, {marginBottom: 20}]} value={profile.name} onChangeText={t => setProfile((p: any) => ({...p, name: t}))} />
             <Text style={s.label}>NORTH STAR</Text>
             <TextInput style={[s.inputField, {marginBottom: 20}]} value={profile.goal} onChangeText={t => setProfile((p: any) => ({...p, goal: t}))} />
+
+            <Text style={[s.label, {marginBottom: 8}]}>TITLE / RANK</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 20}}>
+              {RANK_OPTIONS.map(rank => (
+                <TouchableOpacity key={rank} onPress={() => setProfile((p: any) => ({...p, rank}))} style={[s.tagChip, profile.rank === rank && {backgroundColor: theme.tint, borderColor: theme.tint}]}>
+                  <Text style={{color: profile.rank === rank ? theme.btnText : theme.subText, fontSize: 11, fontWeight: '600'}}>{rank}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <Text style={s.label}>EXPERIENCE (YEARS/MONTHS)</Text>
+            <TextInput style={[s.inputField, {marginBottom: 20}]} value={profile.experience || ''} placeholder="e.g. 2 years" placeholderTextColor={theme.subText} onChangeText={t => setProfile((p: any) => ({...p, experience: t}))} />
+
+            <Text style={[s.label, {marginBottom: 8}]}>TRADING STYLE</Text>
+            <View style={{flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20}}>
+              {TRADING_STYLE_OPTIONS.map(style => {
+                const selected = (profile.tradingStyle || []).includes(style);
+                return (
+                  <TouchableOpacity key={style} onPress={() => setProfile((p: any) => {
+                    const current = p.tradingStyle || [];
+                    const updated = current.includes(style) ? current.filter((s: string) => s !== style) : [...current, style];
+                    return {...p, tradingStyle: updated};
+                  })} style={[s.tagChip, selected && {backgroundColor: theme.tint, borderColor: theme.tint}]}>
+                    <Text style={{color: selected ? theme.btnText : theme.subText, fontSize: 11, fontWeight: '600'}}>{style}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             
             <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingVertical: 10}}>
               <Text style={{color: theme.text, fontWeight: 'bold'}}>LOCK APP (BIOMETRICS)</Text>
               <Switch value={profile.biometricsEnabled} onValueChange={v => setProfile((p: any) => ({...p, biometricsEnabled: v}))} trackColor={{false: theme.border, true: theme.tint}} />
             </View>
           </View>
+
+          {/* Trophy Room */}
+          <View style={[s.activeCard, {marginBottom: 20}]}>
+            <Text style={{color: theme.text, fontSize: 14, fontWeight: '900', letterSpacing: 1, marginBottom: 16}}>🏆 TROPHY ROOM</Text>
+            {BADGES.map(badge => {
+              const unlocked = badge.check({ history, investments });
+              return (
+                <View key={badge.id} style={{flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderColor: theme.border, opacity: unlocked ? 1 : 0.4}}>
+                  <View style={{width: 44, height: 44, borderRadius: 22, backgroundColor: unlocked ? theme.tint + '22' : theme.border, alignItems: 'center', justifyContent: 'center', marginRight: 14}}>
+                    <Text style={{fontSize: 22}}>{unlocked ? badge.emoji : '🔒'}</Text>
+                  </View>
+                  <View style={{flex: 1}}>
+                    <Text style={{color: unlocked ? theme.text : theme.subText, fontWeight: '700', fontSize: 14}}>{badge.name}</Text>
+                    <Text style={{color: theme.subText, fontSize: 11, marginTop: 2}}>{badge.description}</Text>
+                  </View>
+                  {unlocked && <Feather name="check-circle" size={18} color={theme.success} />}
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Data Management */}
+          <View style={[s.activeCard, {marginBottom: 20}]}>
+            <Text style={s.label}>DATA MANAGEMENT</Text>
+            <View style={{flexDirection: 'row', gap: 12, marginTop: 12}}>
+              <TouchableOpacity onPress={onExportData} style={[s.backupBtn, {flex: 1}]}><Feather name="download" size={16} color={theme.tint} /><Text style={s.backupText}>BACKUP ALL</Text></TouchableOpacity>
+              <TouchableOpacity onPress={onImportData} style={[s.backupBtn, {flex: 1}]}><Feather name="upload" size={16} color={theme.tint} /><Text style={s.backupText}>RESTORE</Text></TouchableOpacity>
+            </View>
+          </View>
+
           <TouchableOpacity onPress={() => setView('dashboard')} style={s.actionBtn}><Text style={s.actionBtnText}>SAVE SETTINGS</Text></TouchableOpacity>
         </ScrollView>
       )}

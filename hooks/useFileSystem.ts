@@ -1,10 +1,10 @@
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import { CHART_DIR, ROOT_DIR } from '@/constants/appConfig';
-import type { Trade } from '@/utils/calculators';
+import type { Trade, Investment } from '@/utils/calculators';
 
 export function useFileSystem() {
   const [status, requestPermission] = ImagePicker.useMediaLibraryPermissions();
@@ -40,7 +40,8 @@ export function useFileSystem() {
     activeTrades: Trade[],
     strategies: any[],
     tags: string[],
-    profile: any
+    profile: any,
+    investments: Investment[] = []
   ): Promise<void> => {
     const allImagePaths = new Set<string>();
     const collectImages = (list: Trade[]) => {
@@ -57,6 +58,12 @@ export function useFileSystem() {
     collectImages(history);
     collectImages(activeTrades);
 
+    for (const inv of investments) {
+      if (Array.isArray(inv.imageUris)) {
+        inv.imageUris.forEach(uri => allImagePaths.add(uri));
+      }
+    }
+
     const imageBundle: Record<string, string> = {};
     for (const uri of allImagePaths) {
       if (!uri) continue;
@@ -69,9 +76,29 @@ export function useFileSystem() {
       }
     }
 
-    const backupData = { history, activeTrades, strategies, tags, profile, imageBundle, timestamp: new Date().toISOString(), version: "4.1" };
+    const backupData = { history, activeTrades, strategies, tags, profile, investments, imageBundle, timestamp: new Date().toISOString(), version: "4.2" };
     const fileUri = ROOT_DIR + `ONYX_Backup_${Date.now()}.json`;
     await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backupData));
+
+    if (Platform.OS === 'android') {
+      try {
+        const { StorageAccessFramework } = FileSystem;
+        const perms = await StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (perms.granted) {
+          const fileContent = await FileSystem.readAsStringAsync(fileUri);
+          const safUri = await StorageAccessFramework.createFileAsync(
+            perms.directoryUri,
+            `ONYX_Backup_${Date.now()}`,
+            'application/json'
+          );
+          await FileSystem.writeAsStringAsync(safUri, fileContent);
+          return;
+        }
+      } catch (e) {
+        console.log("SAF save failed, falling back to share sheet:", e);
+      }
+    }
+
     if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(fileUri);
   };
 
@@ -81,6 +108,7 @@ export function useFileSystem() {
     strategies?: any[];
     tags?: string[];
     profile?: any;
+    investments?: Investment[];
   } | null> => {
     const result = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
     if (result.canceled) return null;
@@ -93,12 +121,17 @@ export function useFileSystem() {
       }
     }
     const fixPaths = (list: Trade[]) => list.map(t => ({ ...t, journal: t.journal?.map(j => ({ ...j, imageUris: j.imageUris ? j.imageUris.map(u => CHART_DIR + u.split('/').pop()) : [] })) }));
+    const fixInvestmentPaths = (list: Investment[]) => list.map(inv => ({
+      ...inv,
+      imageUris: Array.isArray(inv.imageUris) ? inv.imageUris.map(u => CHART_DIR + u.split('/').pop()) : [],
+    }));
     return {
       strategies: data.strategies,
       tags: data.tags,
       profile: data.profile,
       history: data.history ? fixPaths(data.history) : undefined,
       activeTrades: data.activeTrades ? fixPaths(data.activeTrades) : undefined,
+      investments: data.investments ? fixInvestmentPaths(data.investments) : undefined,
     };
   };
 
