@@ -25,8 +25,8 @@ export function usePortfolioData() {
     }
   }, [investments]);
 
-  useEffect(() => { loadPortfolio(); }, []);
-  useEffect(() => { savePortfolio(); }, [investments]);
+  useEffect(() => { loadPortfolio(); }, [loadPortfolio]);
+  useEffect(() => { savePortfolio(); }, [savePortfolio]);
 
   const portfolioAnalytics = useMemo(
     () => computePortfolioAnalytics(investments),
