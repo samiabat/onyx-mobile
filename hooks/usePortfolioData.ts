@@ -106,13 +106,26 @@ export function usePortfolioData() {
   }, [investments, recordSnapshot]);
 
   const addInvestment = (investment: Omit<Investment, 'id' | 'currentPrice'>) => {
-    const newInvestment: Investment = {
-      ...investment,
-      id: Date.now(),
-      currentPrice: investment.entryPrice,
-    };
-    setInvestments(prev => [newInvestment, ...prev]);
-    return newInvestment;
+    setInvestments(prev => {
+      const existing = prev.find(
+        inv => inv.ticker.toUpperCase() === investment.ticker.toUpperCase() && inv.category === investment.category
+      );
+      if (existing) {
+        const totalQty = existing.quantity + investment.quantity;
+        const newAvgPrice = (existing.quantity * existing.entryPrice + investment.quantity * investment.entryPrice) / totalQty;
+        return prev.map(inv =>
+          inv.id === existing.id
+            ? { ...inv, quantity: totalQty, entryPrice: newAvgPrice }
+            : inv
+        );
+      }
+      const newInvestment: Investment = {
+        ...investment,
+        id: Date.now(),
+        currentPrice: investment.entryPrice,
+      };
+      return [newInvestment, ...prev];
+    });
   };
 
   const updateCurrentPrice = (id: number, price: number) => {

@@ -50,13 +50,14 @@ export function useTradeData() {
     } catch (e) { console.error("Save Error", e); }
   }, [history, activeTrades, strategies, currentStrategyId, themeMode, tags, profile]);
 
-  const handleExecute = (direction: string | null) => {
+  const handleExecute = (direction: string | null, customRisk?: number) => {
+    const riskAmount = customRisk !== undefined && customRisk > 0 ? customRisk : activeStrategy.risk;
     const newTrade: Trade = {
       id: Date.now(), strategyId: currentStrategyId,
       direction: direction ? direction.toUpperCase() : '',
       dateStr: new Date().toLocaleDateString(),
       timeStr: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      risk: activeStrategy.risk,
+      risk: riskAmount,
       realizedProfit: 0, percentClosed: 0, status: 'RUNNING', journal: [],
       isBreakeven: false, tags: []
     };
