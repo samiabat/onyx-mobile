@@ -22,6 +22,7 @@ import ViewShot, { captureRef } from 'react-native-view-shot';
 import { APP_NAME, THEMES, TRADES_PER_PAGE, PREDEFINED_ASSETS } from '@/constants/appConfig';
 import { runSimulation, computeDailyPnL, type Rule, type Strategy, type Investment, type DailyPnL } from '@/utils/calculators';
 import { generatePlaybookPDF, generateDetailedPDF } from '@/services/pdfService';
+import { searchCoins, type CoinLoreAsset } from '@/services/coinloreService';
 import { useBiometrics } from '@/hooks/useBiometrics';
 import { useFileSystem } from '@/hooks/useFileSystem';
 import { useTradeData } from '@/hooks/useTradeData';
@@ -56,8 +57,9 @@ export default function OnyxApp() {
 
   // --- PORTFOLIO HOOK ---
   const {
-    investments, portfolioAnalytics,
+    investments, portfolioAnalytics, portfolioHistory, isRefreshing,
     addInvestment, updateCurrentPrice, updateInvestmentImages, deleteInvestment,
+    refreshCryptoPrices,
   } = usePortfolioData();
 
   // --- UI STATE ---
@@ -90,13 +92,15 @@ export default function OnyxApp() {
 
   // --- PORTFOLIO UI STATE ---
   const [addInvestmentModal, setAddInvestmentModal] = useState(false);
-  const [newInvestment, setNewInvestment] = useState({ assetName: '', entryPrice: '', quantity: '', entryDate: '', thesisNotes: '', imageUris: [] as string[] });
+  const [newInvestment, setNewInvestment] = useState({ assetName: '', ticker: '', category: '' as Investment['category'], coinloreId: '', entryPrice: '', quantity: '', entryDate: '', thesisNotes: '', imageUris: [] as string[] });
   const [updatePriceModal, setUpdatePriceModal] = useState<{ show: boolean; investmentId: number | null }>({ show: false, investmentId: null });
   const [newPrice, setNewPrice] = useState('');
   const [investmentDetailModal, setInvestmentDetailModal] = useState<{ show: boolean; investment: Investment | null }>({ show: false, investment: null });
 
   // --- ASSET SEARCH STATE ---
   const [assetSearch, setAssetSearch] = useState('');
+  const [coinloreResults, setCoinloreResults] = useState<CoinLoreAsset[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const filteredAssets = assetSearch.trim().length > 0
     ? PREDEFINED_ASSETS.filter(a =>
         a.name.toLowerCase().includes(assetSearch.toLowerCase()) ||
@@ -106,6 +110,29 @@ export default function OnyxApp() {
   const assetSearchHasExactMatch = filteredAssets.some(
     a => a.ticker.toLowerCase() === assetSearch.trim().toLowerCase() || a.name.toLowerCase() === assetSearch.trim().toLowerCase()
   );
+
+  // CoinLore search effect
+  useEffect(() => {
+    const q = assetSearch.trim();
+    if (q.length < 2) { setCoinloreResults([]); return; }
+    const timeout = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await searchCoins(q);
+        // Filter out coins already in predefined list
+        const predefinedTickers = new Set(PREDEFINED_ASSETS.filter(a => a.category === 'Crypto').map(a => a.ticker.toUpperCase()));
+        setCoinloreResults(results.filter(r => !predefinedTickers.has(r.symbol.toUpperCase())));
+      } catch { setCoinloreResults([]); }
+      setIsSearching(false);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [assetSearch]);
+
+  // Auto-refresh crypto prices when switching to portfolio view
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omit refreshCryptoPrices to avoid re-triggering on every investment change
+  useEffect(() => {
+    if (view === 'portfolio') { refreshCryptoPrices(); }
+  }, [view]);
 
   // --- P&L CALENDAR STATE ---
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -241,13 +268,16 @@ export default function OnyxApp() {
     }
     addInvestment({
       assetName: newInvestment.assetName.trim(),
+      ticker: newInvestment.ticker || newInvestment.assetName.trim(),
+      category: newInvestment.category || 'Custom',
+      coinloreId: newInvestment.coinloreId || undefined,
       entryPrice,
       entryDate: newInvestment.entryDate.trim() || new Date().toLocaleDateString(),
       quantity,
       thesisNotes: newInvestment.thesisNotes,
       imageUris: newInvestment.imageUris,
     });
-    setNewInvestment({ assetName: '', entryPrice: '', quantity: '', entryDate: '', thesisNotes: '', imageUris: [] });
+    setNewInvestment({ assetName: '', ticker: '', category: '' as Investment['category'], coinloreId: '', entryPrice: '', quantity: '', entryDate: '', thesisNotes: '', imageUris: [] });
     setAssetSearch('');
     setAddInvestmentModal(false);
   };
@@ -277,6 +307,12 @@ export default function OnyxApp() {
       return;
     }
     updateCurrentPrice(updatePriceModal.investmentId, price);
+    setInvestmentDetailModal(prev => {
+      if (prev.investment && prev.investment.id === updatePriceModal.investmentId) {
+        return { ...prev, investment: { ...prev.investment, currentPrice: price } };
+      }
+      return prev;
+    });
     setUpdatePriceModal({ show: false, investmentId: null });
     setNewPrice('');
   };
@@ -547,102 +583,158 @@ export default function OnyxApp() {
       {/* VIEW: PORTFOLIO */}
       {view === 'portfolio' && (
         <ScrollView contentContainerStyle={s.scrollContent}>
-          <Text style={s.screenTitle}>PORTFOLIO</Text>
-
-          {/* PORTFOLIO ANALYTICS */}
-          <View style={s.statsRow}>
-            <StatCard label="TOTAL INVESTED" value={`$${portfolioAnalytics.totalInvested.toFixed(2)}`} valueColor={theme.text} theme={theme} />
-            <StatCard label="CURRENT VALUE" value={`$${portfolioAnalytics.currentValue.toFixed(2)}`} valueColor={theme.text} theme={theme} />
-          </View>
-          <View style={[s.statsRow, {marginTop: -12}]}>
-            <StatCard label="INVESTING P&L" value={`${portfolioAnalytics.totalPnL >= 0 ? '+' : ''}$${portfolioAnalytics.totalPnL.toFixed(2)}`} valueColor={portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger} theme={theme} valueSize={16} />
-            <StatCard label="P&L %" value={`${portfolioAnalytics.totalPnLPercent >= 0 ? '+' : ''}${portfolioAnalytics.totalPnLPercent.toFixed(1)}%`} valueColor={portfolioAnalytics.totalPnLPercent >= 0 ? theme.success : theme.danger} theme={theme} valueSize={16} />
+          {/* HEADER ROW */}
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+            <Text style={s.screenTitle}>PORTFOLIO</Text>
+            <TouchableOpacity onPress={refreshCryptoPrices} style={{flexDirection: 'row', alignItems: 'center', gap: 4, opacity: isRefreshing ? 0.5 : 1}}>
+              <Feather name="refresh-cw" size={14} color={theme.tint} />
+              <Text style={{color: theme.tint, fontSize: 11, fontWeight: '600'}}>{isRefreshing ? 'UPDATING...' : 'REFRESH'}</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* PORTFOLIO GROWTH GRAPH */}
-          {investments.length > 0 && (
-            <View style={{marginBottom: 24}}>
-              <Text style={s.sectionTitle}>PORTFOLIO VALUE</Text>
-              <View style={{backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border, padding: 16}}>
-                {(() => {
-                  const pnlValues = investments.map(inv => ({
-                    name: inv.assetName.length > 8 ? inv.assetName.substring(0, 8) + '…' : inv.assetName,
-                    value: (inv.currentPrice - inv.entryPrice) * inv.quantity,
-                    cost: inv.entryPrice * inv.quantity,
-                    current: inv.currentPrice * inv.quantity,
-                  }));
-                  if (pnlValues.length === 0) return <Text style={{color: theme.subText, textAlign: 'center', fontStyle: 'italic', paddingVertical: 20}}>No data to display.</Text>;
-                  const graphW = width - 80;
-                  const graphH = 140;
-                  const minVal = Math.min(0, ...pnlValues.map(p => p.value));
-                  const maxVal = Math.max(0, ...pnlValues.map(p => p.value));
-                  const range = maxVal - minVal || 1;
-                  const getX = (i: number) => pnlValues.length === 1 ? graphW / 2 : (i / (pnlValues.length - 1)) * graphW;
-                  const getY = (v: number) => graphH - ((v - minVal) / range) * graphH;
-                  const zeroY = getY(0);
-                  const totalPnL = portfolioAnalytics.totalPnL;
-                  const lineColor = totalPnL >= 0 ? theme.success : theme.danger;
-                  return (
-                    <View>
-                      <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
-                        <Text style={{color: theme.subText, fontSize: 10}}>P&L by Asset</Text>
-                        <Text style={{color: lineColor, fontSize: 12, fontWeight: '700'}}>{totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}</Text>
-                      </View>
-                      <View style={{height: graphH, overflow: 'hidden'}}>
-                        {minVal < 0 && <View style={{position: 'absolute', top: zeroY, left: 0, right: 0, height: 1, backgroundColor: theme.border, opacity: 0.5}} />}
-                        {pnlValues.map((p, i) => (
-                          <View key={i} style={{position: 'absolute', left: getX(i) - 4, top: getY(p.value) - 4, width: 8, height: 8, borderRadius: 4, backgroundColor: p.value >= 0 ? theme.success : theme.danger}} />
-                        ))}
-                        {pnlValues.map((p, i) => {
-                          if (i === 0) return null;
-                          const x1 = getX(i-1); const y1 = getY(pnlValues[i-1].value);
-                          const x2 = getX(i); const y2 = getY(p.value);
-                          const dx = x2 - x1; const dy = y2 - y1;
-                          const len = Math.sqrt(dx*dx + dy*dy);
-                          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-                          return <View key={`l${i}`} style={{position: 'absolute', left: x1, top: y1, width: len, height: 2, backgroundColor: lineColor, opacity: 0.5, transformOrigin: 'left center', transform: [{rotate: `${angle}deg`}]}} />;
-                        })}
-                      </View>
-                      <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 4}}>
-                        {pnlValues.length <= 5 ? pnlValues.map((p, i) => (
-                          <Text key={i} style={{color: theme.subText, fontSize: 8, textAlign: 'center'}}>{p.name}</Text>
-                        )) : (
-                          <>
-                            <Text style={{color: theme.subText, fontSize: 9}}>{pnlValues[0].name}</Text>
-                            <Text style={{color: theme.subText, fontSize: 9}}>{pnlValues[pnlValues.length - 1].name}</Text>
-                          </>
-                        )}
-                      </View>
-                    </View>
-                  );
-                })()}
+          {/* PORTFOLIO SUMMARY - Compact */}
+          <View style={{backgroundColor: theme.card, borderRadius: 10, borderWidth: 1, borderColor: theme.border, padding: 14, marginBottom: 12}}>
+            <Text style={{color: theme.subText, fontSize: 10, fontWeight: '600', letterSpacing: 0.5}}>TOTAL VALUE</Text>
+            <Text style={{color: theme.text, fontSize: 24, fontWeight: '900', marginTop: 2}}>${portfolioAnalytics.currentValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4}}>
+              <Text style={{color: portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger, fontSize: 13, fontWeight: '700'}}>
+                {portfolioAnalytics.totalPnL >= 0 ? '+' : ''}${portfolioAnalytics.totalPnL.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+              </Text>
+              <View style={{backgroundColor: (portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger) + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+                <Text style={{color: portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger, fontSize: 11, fontWeight: '700'}}>
+                  {portfolioAnalytics.totalPnLPercent >= 0 ? '+' : ''}{portfolioAnalytics.totalPnLPercent.toFixed(2)}%
+                </Text>
               </View>
+            </View>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderColor: theme.border}}>
+              <View><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>INVESTED</Text><Text style={{color: theme.text, fontSize: 13, fontWeight: '700'}}>${portfolioAnalytics.totalInvested.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text></View>
+              <View style={{alignItems: 'flex-end'}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>ASSETS</Text><Text style={{color: theme.text, fontSize: 13, fontWeight: '700'}}>{investments.length}</Text></View>
+            </View>
+          </View>
+
+          {/* PORTFOLIO VALUE CHART */}
+          {portfolioHistory.length > 1 && (
+            <View style={{backgroundColor: theme.card, borderRadius: 10, borderWidth: 1, borderColor: theme.border, padding: 12, marginBottom: 12}}>
+              <Text style={{color: theme.subText, fontSize: 9, fontWeight: '600', letterSpacing: 0.5, marginBottom: 8}}>PORTFOLIO VALUE OVER TIME</Text>
+              {(() => {
+                const data = portfolioHistory;
+                const graphW = width - 72;
+                const graphH = 80;
+                const values = data.map(d => d.totalValue);
+                const minV = Math.min(...values) * 0.98;
+                const maxV = Math.max(...values) * 1.02;
+                const range = maxV - minV || 1;
+                const getX = (i: number) => data.length === 1 ? graphW / 2 : (i / (data.length - 1)) * graphW;
+                const getY = (v: number) => graphH - ((v - minV) / range) * graphH;
+                const trend = values[values.length - 1] >= values[0];
+                const lineColor = trend ? theme.success : theme.danger;
+                return (
+                  <View style={{height: graphH, overflow: 'hidden'}}>
+                    {data.map((d, i) => (
+                      <View key={i} style={{position: 'absolute', left: getX(i) - 2, top: getY(d.totalValue) - 2, width: 4, height: 4, borderRadius: 2, backgroundColor: lineColor}} />
+                    ))}
+                    {data.map((d, i) => {
+                      if (i === 0) return null;
+                      const x1 = getX(i-1); const y1 = getY(data[i-1].totalValue);
+                      const x2 = getX(i); const y2 = getY(d.totalValue);
+                      const dx = x2 - x1; const dy = y2 - y1;
+                      const len = Math.sqrt(dx*dx + dy*dy);
+                      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                      return <View key={`l${i}`} style={{position: 'absolute', left: x1, top: y1, width: len, height: 1.5, backgroundColor: lineColor, opacity: 0.6, transformOrigin: 'left center', transform: [{rotate: `${angle}deg`}]}} />;
+                    })}
+                  </View>
+                );
+              })()}
             </View>
           )}
 
-          <TouchableOpacity onPress={() => setAddInvestmentModal(true)} style={[s.mainActionBtn, {marginBottom: 24}]}><Feather name="plus" size={20} color={theme.btnText} /><Text style={{color: theme.btnText, fontWeight: 'bold'}}>ADD INVESTMENT</Text></TouchableOpacity>
+          {/* P&L BY ASSET CHART */}
+          {investments.length > 0 && (
+            <View style={{backgroundColor: theme.card, borderRadius: 10, borderWidth: 1, borderColor: theme.border, padding: 12, marginBottom: 12}}>
+              <Text style={{color: theme.subText, fontSize: 9, fontWeight: '600', letterSpacing: 0.5, marginBottom: 8}}>P&L BY ASSET</Text>
+              {(() => {
+                const pnlValues = investments.map(inv => {
+                  const label = inv.ticker || inv.assetName;
+                  return {
+                    name: label.length > 6 ? label.substring(0, 6) : label,
+                    value: (inv.currentPrice - inv.entryPrice) * inv.quantity,
+                  };
+                });
+                const graphW = width - 72;
+                const graphH = 60;
+                const minVal = Math.min(0, ...pnlValues.map(p => p.value));
+                const maxVal = Math.max(0, ...pnlValues.map(p => p.value));
+                const range = maxVal - minVal || 1;
+                const barW = Math.min(24, (graphW - pnlValues.length * 4) / pnlValues.length);
+                const zeroY = graphH - ((0 - minVal) / range) * graphH;
+                return (
+                  <View>
+                    <View style={{height: graphH, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 4}}>
+                      {pnlValues.map((p, i) => {
+                        const barH = Math.abs(p.value / range) * graphH;
+                        const isPositive = p.value >= 0;
+                        return (
+                          <View key={i} style={{alignItems: 'center', width: barW}}>
+                            <View style={{
+                              width: barW,
+                              height: Math.max(2, barH),
+                              backgroundColor: isPositive ? theme.success : theme.danger,
+                              borderRadius: 2,
+                              opacity: 0.8,
+                              marginBottom: isPositive ? 0 : undefined,
+                            }} />
+                          </View>
+                        );
+                      })}
+                    </View>
+                    <View style={{flexDirection: 'row', justifyContent: 'center', gap: 4, marginTop: 4}}>
+                      {pnlValues.map((p, i) => (
+                        <Text key={i} style={{color: theme.subText, fontSize: 7, textAlign: 'center', width: barW}}>{p.name}</Text>
+                      ))}
+                    </View>
+                  </View>
+                );
+              })()}
+            </View>
+          )}
 
-          <Text style={s.sectionTitle}>HOLDINGS</Text>
-          <View style={s.tableCard}>
-            {investments.map(inv => {
+          {/* ADD BUTTON */}
+          <TouchableOpacity onPress={() => setAddInvestmentModal(true)} style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.tint, paddingVertical: 10, borderRadius: 8, marginBottom: 16}}>
+            <Feather name="plus" size={16} color={theme.btnText} />
+            <Text style={{color: theme.btnText, fontWeight: '700', fontSize: 13}}>ADD INVESTMENT</Text>
+          </TouchableOpacity>
+
+          {/* HOLDINGS - Compact List View */}
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8}}>
+            <Text style={{color: theme.subText, fontSize: 10, fontWeight: '600', letterSpacing: 0.5}}>HOLDINGS</Text>
+            <Text style={{color: theme.subText, fontSize: 10}}>{investments.length} assets</Text>
+          </View>
+          <View style={{backgroundColor: theme.card, borderRadius: 10, borderWidth: 1, borderColor: theme.border, overflow: 'hidden'}}>
+            {investments.map((inv, idx) => {
               const pnl = (inv.currentPrice - inv.entryPrice) * inv.quantity;
               const pnlPercent = inv.entryPrice > 0 ? ((inv.currentPrice - inv.entryPrice) / inv.entryPrice) * 100 : 0;
+              const currentVal = inv.currentPrice * inv.quantity;
+              const isCrypto = !!inv.coinloreId;
               return (
-                <TouchableOpacity key={inv.id} onPress={() => setInvestmentDetailModal({show: true, investment: inv})} style={{padding: 16, borderBottomWidth: 1, borderColor: theme.border}}>
+                <TouchableOpacity key={inv.id} onPress={() => setInvestmentDetailModal({show: true, investment: inv})} style={{paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: idx < investments.length - 1 ? 1 : 0, borderColor: theme.border}}>
                   <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
-                    <View>
-                      <Text style={{color: theme.text, fontWeight: '700', fontSize: 16}}>{inv.assetName}</Text>
-                      <Text style={{color: theme.subText, fontSize: 11, marginTop: 2}}>{inv.quantity} @ ${inv.entryPrice.toFixed(2)} • {inv.entryDate}</Text>
+                    <View style={{flex: 1, marginRight: 8}}>
+                      <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                        <Text style={{color: theme.text, fontWeight: '700', fontSize: 13}}>{inv.ticker || inv.assetName}</Text>
+                        {isCrypto && <View style={{backgroundColor: theme.tint + '20', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3}}><Text style={{color: theme.tint, fontSize: 8, fontWeight: '600'}}>LIVE</Text></View>}
+                        {!isCrypto && inv.category !== 'Custom' && <View style={{backgroundColor: theme.border, paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3}}><Text style={{color: theme.subText, fontSize: 8, fontWeight: '600'}}>{inv.category?.toUpperCase()}</Text></View>}
+                      </View>
+                      <Text style={{color: theme.subText, fontSize: 10, marginTop: 1}}>{inv.quantity} × ${inv.currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
                     </View>
                     <View style={{alignItems: 'flex-end'}}>
-                      <Text style={{color: pnl >= 0 ? theme.success : theme.danger, fontWeight: '700', fontSize: 16}}>{pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</Text>
-                      <Text style={{color: pnl >= 0 ? theme.success : theme.danger, fontSize: 11}}>{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(1)}%</Text>
+                      <Text style={{color: theme.text, fontSize: 13, fontWeight: '600'}}>${currentVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
+                      <Text style={{color: pnl >= 0 ? theme.success : theme.danger, fontSize: 11, fontWeight: '600'}}>{pnl >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
               );
             })}
-            {investments.length === 0 && <Text style={s.emptyText}>No investments logged yet.</Text>}
+            {investments.length === 0 && <Text style={[s.emptyText, {padding: 20}]}>No investments logged yet.</Text>}
           </View>
         </ScrollView>
       )}
@@ -945,22 +1037,51 @@ export default function OnyxApp() {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
           <View style={s.navHeader}><Text style={s.screenTitle}>ADD INVESTMENT</Text><TouchableOpacity onPress={() => { setAddInvestmentModal(false); setAssetSearch(''); }}><Feather name="x" size={24} color={theme.text} /></TouchableOpacity></View>
           <ScrollView contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
-            <Text style={s.label}>SEARCH ASSET</Text>
-            <TextInput style={s.inputField} placeholder="Search e.g. BTC, TSLA, SPX..." placeholderTextColor={theme.subText} value={assetSearch} onChangeText={setAssetSearch} />
+            <Text style={[s.label, {fontSize: 10}]}>SEARCH ASSET</Text>
+            <TextInput style={s.inputField} placeholder="Search e.g. BTC, Bitcoin, TSLA..." placeholderTextColor={theme.subText} value={assetSearch} onChangeText={setAssetSearch} />
 
             {assetSearch.trim().length > 0 && (
-              <View style={{backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginTop: 8, maxHeight: 200}}>
+              <View style={{backgroundColor: theme.card, borderRadius: 10, borderWidth: 1, borderColor: theme.border, marginTop: 8, maxHeight: 280}}>
                 <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  {/* Predefined assets */}
                   {filteredAssets.map((asset, i) => (
-                    <TouchableOpacity key={i} onPress={() => { setNewInvestment(p => ({...p, assetName: `${asset.name} (${asset.ticker})`})); setAssetSearch(''); }} style={{padding: 12, borderBottomWidth: i < filteredAssets.length - 1 ? 1 : 0, borderColor: theme.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
-                      <View><Text style={{color: theme.text, fontWeight: '700'}}>{asset.ticker}</Text><Text style={{color: theme.subText, fontSize: 11}}>{asset.name}</Text></View>
-                      <View style={{backgroundColor: theme.border, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>{asset.category}</Text></View>
+                    <TouchableOpacity key={`pre-${i}`} onPress={() => {
+                      setNewInvestment(p => ({...p, assetName: asset.name, ticker: asset.ticker, category: asset.category, coinloreId: asset.coinloreId || ''}));
+                      setAssetSearch('');
+                    }} style={{paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderColor: theme.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                      <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                        <Text style={{color: theme.text, fontWeight: '700', fontSize: 13}}>{asset.ticker}</Text>
+                        <Text style={{color: theme.subText, fontSize: 11}}>{asset.name}</Text>
+                      </View>
+                      <View style={{flexDirection: 'row', gap: 4, alignItems: 'center'}}>
+                        {asset.coinloreId && <View style={{backgroundColor: theme.tint + '20', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4}}><Text style={{color: theme.tint, fontSize: 8, fontWeight: '600'}}>LIVE</Text></View>}
+                        <View style={{backgroundColor: theme.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>{asset.category}</Text></View>
+                      </View>
                     </TouchableOpacity>
                   ))}
+                  {/* CoinLore API results (crypto not in predefined list) */}
+                  {coinloreResults.map((coin, i) => (
+                    <TouchableOpacity key={`cl-${coin.id}`} onPress={() => {
+                      setNewInvestment(p => ({...p, assetName: coin.name, ticker: coin.symbol, category: 'Crypto', coinloreId: coin.id}));
+                      setAssetSearch('');
+                    }} style={{paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderColor: theme.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                      <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                        <Text style={{color: theme.text, fontWeight: '700', fontSize: 13}}>{coin.symbol}</Text>
+                        <Text style={{color: theme.subText, fontSize: 11}}>{coin.name}</Text>
+                      </View>
+                      <View style={{flexDirection: 'row', gap: 4, alignItems: 'center'}}>
+                        <Text style={{color: theme.success, fontSize: 10}}>${parseFloat(coin.price_usd).toLocaleString()}</Text>
+                        <View style={{backgroundColor: theme.tint + '20', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4}}><Text style={{color: theme.tint, fontSize: 8, fontWeight: '600'}}>LIVE</Text></View>
+                        <View style={{backgroundColor: theme.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>Crypto</Text></View>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                  {isSearching && <Text style={{color: theme.subText, fontSize: 10, padding: 10, textAlign: 'center'}}>Searching CoinLore...</Text>}
+                  {/* Custom asset fallback */}
                   {!assetSearchHasExactMatch && (
-                    <TouchableOpacity onPress={() => { setNewInvestment(p => ({...p, assetName: assetSearch.trim()})); setAssetSearch(''); }} style={{padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8}}>
-                      <Feather name="plus-circle" size={16} color={theme.tint} />
-                      <Text style={{color: theme.tint, fontWeight: '700'}}>Add Custom: "{assetSearch.trim()}"</Text>
+                    <TouchableOpacity onPress={() => { setNewInvestment(p => ({...p, assetName: assetSearch.trim(), ticker: assetSearch.trim(), category: 'Custom', coinloreId: ''})); setAssetSearch(''); }} style={{paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                      <Feather name="plus-circle" size={14} color={theme.tint} />
+                      <Text style={{color: theme.tint, fontWeight: '700', fontSize: 12}}>Add Custom: "{assetSearch.trim()}"</Text>
                     </TouchableOpacity>
                   )}
                 </ScrollView>
@@ -968,37 +1089,38 @@ export default function OnyxApp() {
             )}
 
             {newInvestment.assetName ? (
-              <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: theme.tint + '22', padding: 10, borderRadius: 8, gap: 8}}>
-                <Feather name="check-circle" size={16} color={theme.tint} />
-                <Text style={{color: theme.tint, fontWeight: '700', flex: 1}}>{newInvestment.assetName}</Text>
-                <TouchableOpacity onPress={() => setNewInvestment(p => ({...p, assetName: ''}))}><Feather name="x" size={16} color={theme.subText} /></TouchableOpacity>
+              <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 10, backgroundColor: theme.tint + '18', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, gap: 6}}>
+                <Feather name="check-circle" size={14} color={theme.tint} />
+                <Text style={{color: theme.tint, fontWeight: '700', fontSize: 12, flex: 1}}>{newInvestment.ticker} — {newInvestment.assetName}</Text>
+                {newInvestment.coinloreId ? <View style={{backgroundColor: theme.tint + '20', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4}}><Text style={{color: theme.tint, fontSize: 8, fontWeight: '600'}}>LIVE</Text></View> : null}
+                <TouchableOpacity onPress={() => setNewInvestment(p => ({...p, assetName: '', ticker: '', category: '' as Investment['category'], coinloreId: ''}))}><Feather name="x" size={14} color={theme.subText} /></TouchableOpacity>
               </View>
             ) : null}
 
-            <View style={{flexDirection: 'row', gap: 12, marginTop: 16}}>
-              <View style={{flex: 1}}><Text style={s.label}>ENTRY PRICE ($)</Text><TextInput keyboardType="numeric" style={s.inputField} placeholder="0.00" placeholderTextColor={theme.subText} value={newInvestment.entryPrice} onChangeText={t => setNewInvestment(p => ({...p, entryPrice: t}))} /></View>
-              <View style={{flex: 1}}><Text style={s.label}>QUANTITY</Text><TextInput keyboardType="numeric" style={s.inputField} placeholder="0" placeholderTextColor={theme.subText} value={newInvestment.quantity} onChangeText={t => setNewInvestment(p => ({...p, quantity: t}))} /></View>
+            <View style={{flexDirection: 'row', gap: 12, marginTop: 14}}>
+              <View style={{flex: 1}}><Text style={[s.label, {fontSize: 10}]}>ENTRY PRICE ($)</Text><TextInput keyboardType="numeric" style={s.inputField} placeholder="0.00" placeholderTextColor={theme.subText} value={newInvestment.entryPrice} onChangeText={t => setNewInvestment(p => ({...p, entryPrice: t}))} /></View>
+              <View style={{flex: 1}}><Text style={[s.label, {fontSize: 10}]}>QUANTITY</Text><TextInput keyboardType="numeric" style={s.inputField} placeholder="0" placeholderTextColor={theme.subText} value={newInvestment.quantity} onChangeText={t => setNewInvestment(p => ({...p, quantity: t}))} /></View>
             </View>
 
-            <Text style={[s.label, {marginTop: 16}]}>ENTRY DATE</Text>
+            <Text style={[s.label, {marginTop: 14, fontSize: 10}]}>ENTRY DATE</Text>
             <TextInput style={s.inputField} placeholder="e.g. 2/18/2026 (leave blank for today)" placeholderTextColor={theme.subText} value={newInvestment.entryDate} onChangeText={t => setNewInvestment(p => ({...p, entryDate: t}))} />
 
-            <Text style={[s.label, {marginTop: 16}]}>THESIS NOTES</Text>
-            <TextInput multiline placeholder="Why did I buy this?" placeholderTextColor={theme.subText} value={newInvestment.thesisNotes} onChangeText={t => setNewInvestment(p => ({...p, thesisNotes: t}))} style={[s.inputField, {height: 80, textAlignVertical: 'top'}]} />
+            <Text style={[s.label, {marginTop: 14, fontSize: 10}]}>THESIS NOTES</Text>
+            <TextInput multiline placeholder="Why did I buy this?" placeholderTextColor={theme.subText} value={newInvestment.thesisNotes} onChangeText={t => setNewInvestment(p => ({...p, thesisNotes: t}))} style={[s.inputField, {height: 70, textAlignVertical: 'top'}]} />
 
-            <TouchableOpacity onPress={onPickInvestmentImages} style={[s.imageBtn, {marginTop: 16}, newInvestment.imageUris.length > 0 ? s.imageBtnActive : null]}>
-              <Feather name="camera" size={20} color={newInvestment.imageUris.length > 0 ? theme.btnText : theme.text} />
+            <TouchableOpacity onPress={onPickInvestmentImages} style={[s.imageBtn, {marginTop: 14}, newInvestment.imageUris.length > 0 ? s.imageBtnActive : null]}>
+              <Feather name="camera" size={18} color={newInvestment.imageUris.length > 0 ? theme.btnText : theme.text} />
               <Text style={[s.imageBtnText, newInvestment.imageUris.length > 0 ? {color: theme.btnText} : null]}>{newInvestment.imageUris.length > 0 ? `${newInvestment.imageUris.length} IMAGES` : "ATTACH CHARTS / DATA"}</Text>
             </TouchableOpacity>
             {newInvestment.imageUris.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginTop: 8}}>
                 {newInvestment.imageUris.map((uri, i) => (
-                  <Image key={i} source={{uri}} style={{width: 80, height: 80, borderRadius: 8, marginRight: 8, backgroundColor: '#000'}} resizeMode="cover" />
+                  <Image key={i} source={{uri}} style={{width: 60, height: 60, borderRadius: 6, marginRight: 6, backgroundColor: '#000'}} resizeMode="cover" />
                 ))}
               </ScrollView>
             )}
 
-            <TouchableOpacity onPress={onAddInvestment} style={[s.actionBtn, {marginTop: 24}]}><Text style={s.actionBtnText}>ADD TO PORTFOLIO</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onAddInvestment} style={[s.actionBtn, {marginTop: 20}]}><Text style={s.actionBtnText}>ADD TO PORTFOLIO</Text></TouchableOpacity>
           </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -1031,50 +1153,68 @@ export default function OnyxApp() {
             const inv = investmentDetailModal.investment;
             const pnl = (inv.currentPrice - inv.entryPrice) * inv.quantity;
             const pnlPercent = inv.entryPrice > 0 ? ((inv.currentPrice - inv.entryPrice) / inv.entryPrice) * 100 : 0;
+            const currentVal = inv.currentPrice * inv.quantity;
+            const isCrypto = !!inv.coinloreId;
             return (
-              <ScrollView contentContainerStyle={{padding: 24}}>
-                <Text style={{color: theme.text, fontSize: 28, fontWeight: '900'}}>{inv.assetName}</Text>
-                <Text style={{color: theme.subText, fontSize: 12, marginTop: 4}}>Added {inv.entryDate}</Text>
+              <ScrollView contentContainerStyle={{padding: 20}}>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                  <Text style={{color: theme.text, fontSize: 22, fontWeight: '900'}}>{inv.ticker || inv.assetName}</Text>
+                  {isCrypto && <View style={{backgroundColor: theme.tint + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}><Text style={{color: theme.tint, fontSize: 9, fontWeight: '600'}}>LIVE PRICE</Text></View>}
+                  {!isCrypto && <View style={{backgroundColor: theme.border, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>MANUAL</Text></View>}
+                </View>
+                <Text style={{color: theme.subText, fontSize: 11, marginTop: 2}}>{inv.assetName} • Added {inv.entryDate}</Text>
 
-                <View style={[s.activeCard, {marginTop: 20}]}>
+                {/* Price Card */}
+                <View style={[s.activeCard, {marginTop: 16}]}>
                   <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
-                    <View><Text style={s.label}>ENTRY PRICE</Text><Text style={{color: theme.text, fontSize: 20, fontWeight: '700'}}>${inv.entryPrice.toFixed(2)}</Text></View>
-                    <View style={{alignItems: 'flex-end'}}><Text style={s.label}>CURRENT PRICE</Text><Text style={{color: theme.text, fontSize: 20, fontWeight: '700'}}>${inv.currentPrice.toFixed(2)}</Text></View>
+                    <View><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>ENTRY PRICE</Text><Text style={{color: theme.text, fontSize: 16, fontWeight: '700', marginTop: 2}}>${inv.entryPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text></View>
+                    <View style={{alignItems: 'flex-end'}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>CURRENT PRICE</Text><Text style={{color: theme.text, fontSize: 16, fontWeight: '700', marginTop: 2}}>${inv.currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text></View>
                   </View>
-                  <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 16}}>
-                    <View><Text style={s.label}>QUANTITY</Text><Text style={{color: theme.text, fontSize: 16, fontWeight: '700'}}>{inv.quantity}</Text></View>
-                    <View style={{alignItems: 'flex-end'}}><Text style={s.label}>P&L</Text><Text style={{color: pnl >= 0 ? theme.success : theme.danger, fontSize: 16, fontWeight: '700'}}>{pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ({pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(1)}%)</Text></View>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderColor: theme.border}}>
+                    <View><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>QUANTITY</Text><Text style={{color: theme.text, fontSize: 14, fontWeight: '700', marginTop: 2}}>{inv.quantity}</Text></View>
+                    <View style={{alignItems: 'center'}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>CURRENT VALUE</Text><Text style={{color: theme.text, fontSize: 14, fontWeight: '700', marginTop: 2}}>${currentVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text></View>
+                    <View style={{alignItems: 'flex-end'}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>P&L</Text><Text style={{color: pnl >= 0 ? theme.success : theme.danger, fontSize: 14, fontWeight: '700', marginTop: 2}}>{pnl >= 0 ? '+' : ''}${pnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} ({pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%)</Text></View>
                   </View>
                 </View>
 
+                {/* Manual Update Price Button - Prominent for non-live assets */}
+                {!isCrypto && (
+                  <TouchableOpacity onPress={() => { setUpdatePriceModal({show: true, investmentId: inv.id}); setNewPrice(String(inv.currentPrice)); }} style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: theme.tint + '15', borderWidth: 1, borderColor: theme.tint + '40', paddingVertical: 10, borderRadius: 8, marginTop: 12}}>
+                    <Feather name="edit-3" size={14} color={theme.tint} />
+                    <Text style={{color: theme.tint, fontWeight: '700', fontSize: 12}}>UPDATE CURRENT PRICE</Text>
+                  </TouchableOpacity>
+                )}
+
                 {inv.thesisNotes ? (
-                  <View style={{marginTop: 20}}>
-                    <Text style={s.sectionTitle}>THESIS</Text>
-                    <View style={[s.activeCard, {marginTop: 4}]}>
-                      <Text style={{color: theme.text, fontStyle: 'italic', lineHeight: 20}}>"{inv.thesisNotes}"</Text>
+                  <View style={{marginTop: 16}}>
+                    <Text style={{color: theme.subText, fontSize: 9, fontWeight: '600', letterSpacing: 0.5, marginBottom: 6}}>THESIS</Text>
+                    <View style={[s.activeCard, {marginTop: 0}]}>
+                      <Text style={{color: theme.text, fontStyle: 'italic', lineHeight: 18, fontSize: 13}}>"{inv.thesisNotes}"</Text>
                     </View>
                   </View>
                 ) : null}
 
                 {inv.imageUris && inv.imageUris.length > 0 && (
-                  <View style={{marginTop: 20}}>
-                    <Text style={s.sectionTitle}>VISUAL THESIS</Text>
+                  <View style={{marginTop: 16}}>
+                    <Text style={{color: theme.subText, fontSize: 9, fontWeight: '600', letterSpacing: 0.5, marginBottom: 6}}>VISUAL THESIS</Text>
                     {inv.imageUris.map((uri, i) => (
                       <TouchableOpacity key={i} onPress={() => setZoomImage(uri)}>
-                        <Image source={{uri}} style={{width: '100%', height: 200, borderRadius: 12, marginTop: 8, backgroundColor: '#000'}} resizeMode="cover" />
+                        <Image source={{uri}} style={{width: '100%', height: 180, borderRadius: 10, marginTop: 6, backgroundColor: '#000'}} resizeMode="cover" />
                       </TouchableOpacity>
                     ))}
                   </View>
                 )}
 
-                <TouchableOpacity onPress={() => onPickDetailImages(inv.id)} style={[s.imageBtn, {marginTop: 20}]}>
-                  <Feather name="camera" size={20} color={theme.text} />
-                  <Text style={s.imageBtnText}>ADD MORE CHARTS</Text>
+                <TouchableOpacity onPress={() => onPickDetailImages(inv.id)} style={[s.imageBtn, {marginTop: 16}]}>
+                  <Feather name="camera" size={16} color={theme.text} />
+                  <Text style={[s.imageBtnText, {fontSize: 11}]}>ADD CHARTS</Text>
                 </TouchableOpacity>
 
-                <View style={{flexDirection: 'row', gap: 12, marginTop: 20}}>
-                  <TouchableOpacity onPress={() => { setUpdatePriceModal({show: true, investmentId: inv.id}); setNewPrice(String(inv.currentPrice)); }} style={[s.actionBtn, {flex: 1, gap: 8}]}><Feather name="edit-3" size={18} color={theme.btnText} /><Text style={s.actionBtnText}>UPDATE PRICE</Text></TouchableOpacity>
-                  <TouchableOpacity onPress={() => { deleteInvestment(inv.id); setInvestmentDetailModal({show: false, investment: null}); }} style={[s.actionBtn, {flex: 1, backgroundColor: theme.danger}]}><Feather name="trash-2" size={18} color="white" /><Text style={{color: 'white', fontWeight: '700'}}>DELETE</Text></TouchableOpacity>
+                <View style={{flexDirection: 'row', gap: 10, marginTop: 16}}>
+                  {isCrypto && (
+                    <TouchableOpacity onPress={() => { setUpdatePriceModal({show: true, investmentId: inv.id}); setNewPrice(String(inv.currentPrice)); }} style={[s.actionBtn, {flex: 1, gap: 6}]}><Feather name="edit-3" size={16} color={theme.btnText} /><Text style={[s.actionBtnText, {fontSize: 12}]}>MANUAL OVERRIDE</Text></TouchableOpacity>
+                  )}
+                  <TouchableOpacity onPress={() => { deleteInvestment(inv.id); setInvestmentDetailModal({show: false, investment: null}); }} style={[s.actionBtn, {flex: 1, backgroundColor: theme.danger}]}><Feather name="trash-2" size={16} color="white" /><Text style={{color: 'white', fontWeight: '700', fontSize: 12}}>DELETE</Text></TouchableOpacity>
                 </View>
               </ScrollView>
             );
