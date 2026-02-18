@@ -3,7 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import { CHART_DIR, ROOT_DIR } from '@/constants/appConfig';
+import { CHART_DIR, ROOT_DIR, BACKUP_VERSION } from '@/constants/appConfig';
 import type { Trade, Investment } from '@/utils/calculators';
 
 export function useFileSystem() {
@@ -76,7 +76,7 @@ export function useFileSystem() {
       }
     }
 
-    const backupData = { history, activeTrades, strategies, tags, profile, investments, imageBundle, timestamp: new Date().toISOString(), version: "4.2" };
+    const backupData = { history, activeTrades, strategies, tags, profile, investments, imageBundle, timestamp: new Date().toISOString(), version: BACKUP_VERSION };
     const fileUri = ROOT_DIR + `ONYX_Backup_${Date.now()}.json`;
     await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backupData));
 
