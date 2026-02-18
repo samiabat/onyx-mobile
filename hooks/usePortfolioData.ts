@@ -6,6 +6,7 @@ import { fetchPricesByIds } from '@/services/coinloreService';
 
 const STORAGE_KEY = 'onyx_portfolio';
 const HISTORY_KEY = 'onyx_portfolio_history';
+const SNAPSHOT_THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
 
 export interface PortfolioSnapshot {
   timestamp: number;
@@ -64,7 +65,7 @@ export function usePortfolioData() {
       setPortfolioHistory(prev => {
         // Keep max 100 data points, throttle to 1 per 5 min
         const last = prev[prev.length - 1];
-        if (last && Date.now() - last.timestamp < 5 * 60 * 1000) {
+        if (last && Date.now() - last.timestamp < SNAPSHOT_THROTTLE_MS) {
           const updated = [...prev.slice(0, -1), snapshot];
           saveHistory(updated);
           return updated;

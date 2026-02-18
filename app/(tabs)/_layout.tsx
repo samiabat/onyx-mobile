@@ -129,6 +129,7 @@ export default function OnyxApp() {
   }, [assetSearch]);
 
   // Auto-refresh crypto prices when switching to portfolio view
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omit refreshCryptoPrices to avoid re-triggering on every investment change
   useEffect(() => {
     if (view === 'portfolio') { refreshCryptoPrices(); }
   }, [view]);
@@ -652,10 +653,13 @@ export default function OnyxApp() {
             <View style={{backgroundColor: theme.card, borderRadius: 10, borderWidth: 1, borderColor: theme.border, padding: 12, marginBottom: 12}}>
               <Text style={{color: theme.subText, fontSize: 9, fontWeight: '600', letterSpacing: 0.5, marginBottom: 8}}>P&L BY ASSET</Text>
               {(() => {
-                const pnlValues = investments.map(inv => ({
-                  name: (inv.ticker || inv.assetName).length > 6 ? (inv.ticker || inv.assetName).substring(0, 6) : (inv.ticker || inv.assetName),
-                  value: (inv.currentPrice - inv.entryPrice) * inv.quantity,
-                }));
+                const pnlValues = investments.map(inv => {
+                  const label = inv.ticker || inv.assetName;
+                  return {
+                    name: label.length > 6 ? label.substring(0, 6) : label,
+                    value: (inv.currentPrice - inv.entryPrice) * inv.quantity,
+                  };
+                });
                 const graphW = width - 72;
                 const graphH = 60;
                 const minVal = Math.min(0, ...pnlValues.map(p => p.value));
