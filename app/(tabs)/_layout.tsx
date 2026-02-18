@@ -318,8 +318,8 @@ export default function OnyxApp() {
             <StatCard label="AVG RR" value={analytics.avgRR} valueColor={theme.text} theme={theme} />
           </View>
           <View style={[s.statsRow, {marginTop: -12}]}>
-            <StatCard label="WIN RATE" value={`${analytics.winRate.toFixed(1)}%`} valueColor={theme.text} theme={theme} valueSize={20} />
-            <StatCard label="TOTAL" value={`${analytics.totalTrades}`} valueColor={theme.text} theme={theme} valueSize={20} />
+            <StatCard label="WIN RATE" value={`${analytics.winRate.toFixed(1)}%`} valueColor={theme.text} theme={theme} valueSize={16} />
+            <StatCard label="TOTAL" value={`${analytics.totalTrades}`} valueColor={theme.text} theme={theme} valueSize={16} />
           </View>
 
           {/* TAG ANALYTICS */}
@@ -344,7 +344,7 @@ export default function OnyxApp() {
           )}
 
           <View style={{flexDirection: 'row', gap: 12, marginBottom: 24}}>
-            <TouchableOpacity onPress={() => setView('direction')} style={s.mainActionBtn}><Feather name="plus" size={20} color={theme.btnText} /><Text style={{color: theme.btnText, fontWeight: 'bold'}}>NEW ENTRY</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setView('checklist')} style={s.mainActionBtn}><Feather name="plus" size={20} color={theme.btnText} /><Text style={{color: theme.btnText, fontWeight: 'bold', fontSize: 13}}>ENTER TRADE</Text></TouchableOpacity>
           </View>
 
           <Text style={s.sectionTitle}>JOURNAL</Text>
@@ -375,44 +375,7 @@ export default function OnyxApp() {
         <ScrollView contentContainerStyle={s.scrollContent}>
           <Text style={s.screenTitle}>PERFORMANCE</Text>
 
-          {/* REPORT BUTTONS - ANCHORED AT TOP */}
-          <View style={{flexDirection: 'row', gap: 12, marginBottom: 24}}>
-            <TouchableOpacity onPress={onGenerateDetailedPDF} style={[s.actionBtn, {flex: 1, gap: 8}]}><Feather name="file-text" size={18} color={theme.btnText} /><Text style={s.actionBtnText}>EXPORT PDF REPORT</Text></TouchableOpacity>
-            <TouchableOpacity onPress={onGeneratePlaybookPDF} style={[s.actionBtn, {flex: 1, gap: 8, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border}]}><Feather name="book-open" size={18} color={theme.text} /><Text style={{color: theme.text, fontWeight: '700'}}>PLAYBOOK</Text></TouchableOpacity>
-          </View>
-
-          <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24, backgroundColor: theme.card, padding: 4, borderRadius: 12}}>
-            {['1D', '1W', '1M', '1Y', 'ALL'].map(p => (
-              <TouchableOpacity key={p} onPress={() => setPerfPeriod(p)} style={[s.periodBtn, perfPeriod === p && {backgroundColor: theme.tint}]}>
-                <Text style={[s.periodText, perfPeriod === p ? {color: theme.btnText} : {color: theme.subText}]}>{p}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={s.perfSection}>
-            <Text style={s.sectionTitle}>PROFITABILITY</Text>
-            <View style={s.perfList}>
-              <View style={s.perfRow}><Text style={s.perfLabel}>Net Profit</Text><Text style={[s.perfValue, {color: analytics.netProfit >= 0 ? theme.success : theme.danger}]}>${analytics.netProfit.toFixed(2)}</Text></View>
-              <View style={[s.perfRow, {borderBottomWidth: 0}]}><Text style={s.perfLabel}>Profit Factor</Text><Text style={s.perfValue}>{analytics.profitFactor}</Text></View>
-            </View>
-          </View>
-
-          <View style={s.perfSection}>
-            <Text style={s.sectionTitle}>EFFICIENCY</Text>
-            <View style={s.perfList}>
-              <View style={s.perfRow}><Text style={s.perfLabel}>Win Rate</Text><Text style={s.perfValue}>{analytics.winRate.toFixed(1)}%</Text></View>
-              <View style={[s.perfRow, {borderBottomWidth: 0}]}><Text style={s.perfLabel}>Avg RR</Text><Text style={s.perfValue}>{analytics.avgRR}</Text></View>
-            </View>
-          </View>
-
-          <View style={s.perfSection}>
-            <Text style={s.sectionTitle}>ACTIVITY</Text>
-            <View style={s.perfList}>
-              <View style={[s.perfRow, {borderBottomWidth: 0}]}><Text style={s.perfLabel}>Total Trades</Text><Text style={s.perfValue}>{analytics.totalTrades}</Text></View>
-            </View>
-          </View>
-
-          {/* P&L CALENDAR HEATMAP */}
+          {/* P&L CALENDAR HEATMAP - FIRST */}
           <View style={s.perfSection}>
             <Text style={s.sectionTitle}>P&L CALENDAR</Text>
             <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
@@ -466,7 +429,97 @@ export default function OnyxApp() {
             })()}
           </View>
 
-          <View style={{gap: 12, marginTop: 24}}>
+          {/* EQUITY LINE GRAPH */}
+          <View style={s.perfSection}>
+            <Text style={s.sectionTitle}>EQUITY CURVE</Text>
+            <View style={{backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border, padding: 16}}>
+              {(() => {
+                const sortedDates = Object.keys(dailyPnLMap).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+                if (sortedDates.length < 2) return <Text style={{color: theme.subText, textAlign: 'center', fontStyle: 'italic', paddingVertical: 20}}>Need at least 2 trading days for graph.</Text>;
+                const equityPoints: number[] = [];
+                let cumPnL = 0;
+                sortedDates.forEach(date => { cumPnL += dailyPnLMap[date].pnl; equityPoints.push(cumPnL); });
+                const graphW = width - 80;
+                const graphH = 160;
+                const minVal = Math.min(0, ...equityPoints);
+                const maxVal = Math.max(0, ...equityPoints);
+                const range = maxVal - minVal || 1;
+                const getX = (i: number) => (i / (equityPoints.length - 1)) * graphW;
+                const getY = (v: number) => graphH - ((v - minVal) / range) * graphH;
+                const zeroY = getY(0);
+                const lastVal = equityPoints[equityPoints.length - 1];
+                const lineColor = lastVal >= 0 ? theme.success : theme.danger;
+                return (
+                  <View>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
+                      <Text style={{color: theme.subText, fontSize: 10}}>Cumulative P&L</Text>
+                      <Text style={{color: lineColor, fontSize: 12, fontWeight: '700'}}>{lastVal >= 0 ? '+' : ''}${lastVal.toFixed(2)}</Text>
+                    </View>
+                    <View style={{height: graphH, overflow: 'hidden'}}>
+                      {/* Zero line */}
+                      {minVal < 0 && <View style={{position: 'absolute', top: zeroY, left: 0, right: 0, height: 1, backgroundColor: theme.border, opacity: 0.5}} />}
+                      {/* Equity dots and lines */}
+                      {equityPoints.map((val, i) => (
+                        <View key={i} style={{position: 'absolute', left: getX(i) - 3, top: getY(val) - 3, width: 6, height: 6, borderRadius: 3, backgroundColor: lineColor}} />
+                      ))}
+                      {equityPoints.map((val, i) => {
+                        if (i === 0) return null;
+                        const x1 = getX(i-1); const y1 = getY(equityPoints[i-1]);
+                        const x2 = getX(i); const y2 = getY(val);
+                        const dx = x2 - x1; const dy = y2 - y1;
+                        const len = Math.sqrt(dx*dx + dy*dy);
+                        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                        return <View key={`l${i}`} style={{position: 'absolute', left: x1, top: y1, width: len, height: 2, backgroundColor: lineColor, opacity: 0.7, transformOrigin: 'left center', transform: [{rotate: `${angle}deg`}]}} />;
+                      })}
+                    </View>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 4}}>
+                      <Text style={{color: theme.subText, fontSize: 9}}>{sortedDates[0]}</Text>
+                      <Text style={{color: theme.subText, fontSize: 9}}>{sortedDates[sortedDates.length - 1]}</Text>
+                    </View>
+                  </View>
+                );
+              })()}
+            </View>
+          </View>
+
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24, backgroundColor: theme.card, padding: 4, borderRadius: 12}}>
+            {['1D', '1W', '1M', '1Y', 'ALL'].map(p => (
+              <TouchableOpacity key={p} onPress={() => setPerfPeriod(p)} style={[s.periodBtn, perfPeriod === p && {backgroundColor: theme.tint}]}>
+                <Text style={[s.periodText, perfPeriod === p ? {color: theme.btnText} : {color: theme.subText}]}>{p}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={s.perfSection}>
+            <Text style={s.sectionTitle}>PROFITABILITY</Text>
+            <View style={s.perfList}>
+              <View style={s.perfRow}><Text style={s.perfLabel}>Net Profit</Text><Text style={[s.perfValue, {color: analytics.netProfit >= 0 ? theme.success : theme.danger}]}>${analytics.netProfit.toFixed(2)}</Text></View>
+              <View style={[s.perfRow, {borderBottomWidth: 0}]}><Text style={s.perfLabel}>Profit Factor</Text><Text style={s.perfValue}>{analytics.profitFactor}</Text></View>
+            </View>
+          </View>
+
+          <View style={s.perfSection}>
+            <Text style={s.sectionTitle}>EFFICIENCY</Text>
+            <View style={s.perfList}>
+              <View style={s.perfRow}><Text style={s.perfLabel}>Win Rate</Text><Text style={s.perfValue}>{analytics.winRate.toFixed(1)}%</Text></View>
+              <View style={[s.perfRow, {borderBottomWidth: 0}]}><Text style={s.perfLabel}>Avg RR</Text><Text style={s.perfValue}>{analytics.avgRR}</Text></View>
+            </View>
+          </View>
+
+          <View style={s.perfSection}>
+            <Text style={s.sectionTitle}>ACTIVITY</Text>
+            <View style={s.perfList}>
+              <View style={[s.perfRow, {borderBottomWidth: 0}]}><Text style={s.perfLabel}>Total Trades</Text><Text style={s.perfValue}>{analytics.totalTrades}</Text></View>
+            </View>
+          </View>
+
+          {/* REPORT BUTTONS & SIMULATOR - AT BOTTOM */}
+          <View style={{flexDirection: 'row', gap: 12, marginBottom: 12}}>
+            <TouchableOpacity onPress={onGenerateDetailedPDF} style={[s.actionBtn, {flex: 1, gap: 8}]}><Feather name="file-text" size={18} color={theme.btnText} /><Text style={s.actionBtnText}>EXPORT PDF REPORT</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onGeneratePlaybookPDF} style={[s.actionBtn, {flex: 1, gap: 8, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border}]}><Feather name="book-open" size={18} color={theme.text} /><Text style={{color: theme.text, fontWeight: '700', fontSize: 13}}>PLAYBOOK</Text></TouchableOpacity>
+          </View>
+
+          <View style={{gap: 12}}>
             <TouchableOpacity onPress={() => setSimModal(true)} style={s.actionBtn}><Feather name="trending-up" size={18} color={theme.btnText} /><Text style={s.actionBtnText}>SIMULATOR</Text></TouchableOpacity>
           </View>
         </ScrollView>
@@ -502,9 +555,70 @@ export default function OnyxApp() {
             <StatCard label="CURRENT VALUE" value={`$${portfolioAnalytics.currentValue.toFixed(2)}`} valueColor={theme.text} theme={theme} />
           </View>
           <View style={[s.statsRow, {marginTop: -12}]}>
-            <StatCard label="INVESTING P&L" value={`${portfolioAnalytics.totalPnL >= 0 ? '+' : ''}$${portfolioAnalytics.totalPnL.toFixed(2)}`} valueColor={portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger} theme={theme} valueSize={20} />
-            <StatCard label="P&L %" value={`${portfolioAnalytics.totalPnLPercent >= 0 ? '+' : ''}${portfolioAnalytics.totalPnLPercent.toFixed(1)}%`} valueColor={portfolioAnalytics.totalPnLPercent >= 0 ? theme.success : theme.danger} theme={theme} valueSize={20} />
+            <StatCard label="INVESTING P&L" value={`${portfolioAnalytics.totalPnL >= 0 ? '+' : ''}$${portfolioAnalytics.totalPnL.toFixed(2)}`} valueColor={portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger} theme={theme} valueSize={16} />
+            <StatCard label="P&L %" value={`${portfolioAnalytics.totalPnLPercent >= 0 ? '+' : ''}${portfolioAnalytics.totalPnLPercent.toFixed(1)}%`} valueColor={portfolioAnalytics.totalPnLPercent >= 0 ? theme.success : theme.danger} theme={theme} valueSize={16} />
           </View>
+
+          {/* PORTFOLIO GROWTH GRAPH */}
+          {investments.length > 0 && (
+            <View style={{marginBottom: 24}}>
+              <Text style={s.sectionTitle}>PORTFOLIO VALUE</Text>
+              <View style={{backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border, padding: 16}}>
+                {(() => {
+                  const pnlValues = investments.map(inv => ({
+                    name: inv.assetName.length > 8 ? inv.assetName.substring(0, 8) + '…' : inv.assetName,
+                    value: (inv.currentPrice - inv.entryPrice) * inv.quantity,
+                    cost: inv.entryPrice * inv.quantity,
+                    current: inv.currentPrice * inv.quantity,
+                  }));
+                  if (pnlValues.length === 0) return <Text style={{color: theme.subText, textAlign: 'center', fontStyle: 'italic', paddingVertical: 20}}>No data to display.</Text>;
+                  const graphW = width - 80;
+                  const graphH = 140;
+                  const minVal = Math.min(0, ...pnlValues.map(p => p.value));
+                  const maxVal = Math.max(0, ...pnlValues.map(p => p.value));
+                  const range = maxVal - minVal || 1;
+                  const getX = (i: number) => pnlValues.length === 1 ? graphW / 2 : (i / (pnlValues.length - 1)) * graphW;
+                  const getY = (v: number) => graphH - ((v - minVal) / range) * graphH;
+                  const zeroY = getY(0);
+                  const totalPnL = portfolioAnalytics.totalPnL;
+                  const lineColor = totalPnL >= 0 ? theme.success : theme.danger;
+                  return (
+                    <View>
+                      <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}>
+                        <Text style={{color: theme.subText, fontSize: 10}}>P&L by Asset</Text>
+                        <Text style={{color: lineColor, fontSize: 12, fontWeight: '700'}}>{totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}</Text>
+                      </View>
+                      <View style={{height: graphH, overflow: 'hidden'}}>
+                        {minVal < 0 && <View style={{position: 'absolute', top: zeroY, left: 0, right: 0, height: 1, backgroundColor: theme.border, opacity: 0.5}} />}
+                        {pnlValues.map((p, i) => (
+                          <View key={i} style={{position: 'absolute', left: getX(i) - 4, top: getY(p.value) - 4, width: 8, height: 8, borderRadius: 4, backgroundColor: p.value >= 0 ? theme.success : theme.danger}} />
+                        ))}
+                        {pnlValues.map((p, i) => {
+                          if (i === 0) return null;
+                          const x1 = getX(i-1); const y1 = getY(pnlValues[i-1].value);
+                          const x2 = getX(i); const y2 = getY(p.value);
+                          const dx = x2 - x1; const dy = y2 - y1;
+                          const len = Math.sqrt(dx*dx + dy*dy);
+                          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                          return <View key={`l${i}`} style={{position: 'absolute', left: x1, top: y1, width: len, height: 2, backgroundColor: lineColor, opacity: 0.5, transformOrigin: 'left center', transform: [{rotate: `${angle}deg`}]}} />;
+                        })}
+                      </View>
+                      <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 4}}>
+                        {pnlValues.length <= 5 ? pnlValues.map((p, i) => (
+                          <Text key={i} style={{color: theme.subText, fontSize: 8, textAlign: 'center'}}>{p.name}</Text>
+                        )) : (
+                          <>
+                            <Text style={{color: theme.subText, fontSize: 9}}>{pnlValues[0].name}</Text>
+                            <Text style={{color: theme.subText, fontSize: 9}}>{pnlValues[pnlValues.length - 1].name}</Text>
+                          </>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })()}
+              </View>
+            </View>
+          )}
 
           <TouchableOpacity onPress={() => setAddInvestmentModal(true)} style={[s.mainActionBtn, {marginBottom: 24}]}><Feather name="plus" size={20} color={theme.btnText} /><Text style={{color: theme.btnText, fontWeight: 'bold'}}>ADD INVESTMENT</Text></TouchableOpacity>
 
@@ -687,9 +801,8 @@ export default function OnyxApp() {
       </Modal>
 
       {/* STANDARD VIEWS */}
-      {view === 'direction' && (<View style={s.centerContent}><TouchableOpacity onPress={() => setView('dashboard')} style={s.backBtn}><Feather name="x" size={24} color={theme.text} /></TouchableOpacity><Text style={s.screenTitle}>MARKET BIAS</Text><TouchableOpacity onPress={() => {setDirection('long'); setView('checklist');}} style={[s.bigBtn, s.borderGreen]}><Feather name="trending-up" size={48} color={theme.tint} /><Text style={[s.bigBtnText, {color: theme.tint}]}>LONG</Text></TouchableOpacity><TouchableOpacity onPress={() => {setDirection('short'); setView('checklist');}} style={[s.bigBtn, s.borderRed]}><Feather name="trending-down" size={48} color={theme.danger} /><Text style={[s.bigBtnText, {color: theme.danger}]}>SHORT</Text></TouchableOpacity></View>)}
-      {view === 'checklist' && (<View style={s.centerContent}><TouchableOpacity onPress={() => setView('direction')} style={s.backBtn}><Feather name="arrow-left" size={24} color={theme.text} /></TouchableOpacity><Text style={s.screenTitle}>CONFIRMATION</Text><ScrollView style={s.checklistCard}>{activeStrategy.rules.map((rule: Rule) => (<TouchableOpacity key={rule.id} onPress={() => setCheckedRules(p => ({...p, [rule.id]: !p[rule.id]}))} style={[s.checkItem, checkedRules[rule.id] ? s.checkItemActive : null]}><Text style={s.checkText}>{rule.text}</Text><View style={[s.checkCircle, checkedRules[rule.id] ? s.checkCircleActive : null]}>{checkedRules[rule.id] && <Feather name="check" size={14} color="#000" />}</View></TouchableOpacity>))}</ScrollView><View style={[s.executeBox, allRulesMet ? s.executeBoxReady : s.executeBoxLocked]}><TouchableOpacity onPress={onExecute} style={{alignItems: 'center', width: '100%'}}><Feather name={allRulesMet ? "shield" : "alert-triangle"} size={32} color={theme.btnText} style={{marginBottom: 8}} /><Text style={[s.executeTitle, !allRulesMet && {color: theme.subText}]}>{allRulesMet ? `EXECUTE ($${activeStrategy.risk})` : "FORCE EXECUTE"}</Text></TouchableOpacity></View></View>)}
-      {view === 'active' && (<ScrollView contentContainerStyle={s.scrollContent}><Text style={s.screenTitle}>LIVE TRADES</Text>{strategyActive.map(trade => (<TouchableOpacity key={trade.id} onPress={() => setDetailModal({show: true, trade})} style={s.activeCard}><View style={s.activeHeader}><Text style={s.riskValue}>${trade.risk} RISK</Text><View style={[s.tag, trade.direction === 'LONG' ? s.tagGreen : s.tagRed]}><Text style={[s.tagText, {color: trade.direction === 'LONG' ? '#000' : '#FFF'}]}>{trade.direction}</Text></View></View><View style={s.progressBox}><View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}><Text style={s.label}>REALIZED: <Text style={s.profitValue}>+${trade.realizedProfit.toFixed(2)}</Text></Text><Text style={[s.label, {color: theme.text}]}>{trade.percentClosed}% CLOSED</Text></View><View style={s.progressBarBg}><View style={[s.progressBarFill, { width: `${trade.percentClosed}%` }]} /></View></View><View style={s.grid3}>{[25, 50, 75].map(p => (<TouchableOpacity key={p} onPress={() => openExecModal('PARTIAL', trade.id, p)} style={s.partialBtn}><Text style={s.partialBtnText}>+{p}%</Text></TouchableOpacity>))}</View><View style={{flexDirection: 'row', gap: 10, marginTop: 16}}><TouchableOpacity onPress={() => toggleBreakeven(trade.id)} style={[s.actionBtn, {flex: 1, backgroundColor: trade.isBreakeven ? theme.tint : theme.card, borderWidth: 1, borderColor: trade.isBreakeven ? theme.tint : theme.border}]}><Text style={{color: trade.isBreakeven ? theme.btnText : theme.text, fontWeight: '700'}}>MOVE SL TO BE</Text></TouchableOpacity><TouchableOpacity onPress={() => openExecModal('FULL', trade.id, 100 - trade.percentClosed)} style={[s.actionBtn, {flex: 1}]}><Text style={s.actionBtnText}>CLOSE FULL</Text></TouchableOpacity></View><View style={{flexDirection: 'row', gap: 10, marginTop: 8}}><TouchableOpacity onPress={() => setTagModal({show: true, tradeId: trade.id})} style={[s.actionBtn, {flex:1, borderColor: theme.border, borderWidth: 1, backgroundColor: 'transparent'}]}><Text style={{color: theme.text, fontWeight: '700'}}>TAGS</Text></TouchableOpacity><TouchableOpacity onPress={() => openExecModal('SL', trade.id, 0)} style={[s.actionBtn, {flex:1, borderColor: theme.danger, borderWidth: 2, backgroundColor: 'transparent'}]}><Text style={s.actionBtnTextRed}>{trade.isBreakeven ? "STOPPED AT BE" : "STOP LOSS"}</Text></TouchableOpacity></View></TouchableOpacity>))}{strategyActive.length === 0 && <View style={s.emptyState}><Feather name="crosshair" size={48} color={theme.subText} /><Text style={s.emptyText}>No live positions.</Text><TouchableOpacity onPress={() => setView('direction')} style={s.scanBtn}><Text style={s.scanBtnText}>SCAN MARKET</Text></TouchableOpacity></View>}</ScrollView>)}
+      {view === 'checklist' && (<View style={s.centerContent}><TouchableOpacity onPress={() => setView('dashboard')} style={s.backBtn}><Feather name="arrow-left" size={24} color={theme.text} /></TouchableOpacity><Text style={s.screenTitle}>CONFIRMATION</Text><View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20, gap: 16}}><TouchableOpacity onPress={() => setDirection('long')} style={[s.dirToggleBtn, direction === 'long' && {backgroundColor: theme.tint, borderColor: theme.tint}]}><Feather name="trending-up" size={16} color={direction === 'long' ? theme.btnText : theme.subText} /><Text style={{color: direction === 'long' ? theme.btnText : theme.subText, fontWeight: '700', fontSize: 13}}>LONG</Text></TouchableOpacity><TouchableOpacity onPress={() => setDirection('short')} style={[s.dirToggleBtn, direction === 'short' && {backgroundColor: theme.danger, borderColor: theme.danger}]}><Feather name="trending-down" size={16} color={direction === 'short' ? '#FFF' : theme.subText} /><Text style={{color: direction === 'short' ? '#FFF' : theme.subText, fontWeight: '700', fontSize: 13}}>SHORT</Text></TouchableOpacity></View><ScrollView style={s.checklistCard}>{activeStrategy.rules.map((rule: Rule) => (<TouchableOpacity key={rule.id} onPress={() => setCheckedRules(p => ({...p, [rule.id]: !p[rule.id]}))} style={[s.checkItem, checkedRules[rule.id] ? s.checkItemActive : null]}><Text style={s.checkText}>{rule.text}</Text><View style={[s.checkCircle, checkedRules[rule.id] ? s.checkCircleActive : null]}>{checkedRules[rule.id] && <Feather name="check" size={14} color="#000" />}</View></TouchableOpacity>))}</ScrollView><TouchableOpacity onPress={onExecute} disabled={!direction} style={[s.executeBtn, allRulesMet && direction ? s.executeBtnReady : s.executeBtnLocked]}><Feather name={allRulesMet && direction ? "shield" : "alert-triangle"} size={20} color={allRulesMet && direction ? theme.btnText : theme.subText} /><Text style={[s.executeBtnText, !(allRulesMet && direction) && {color: theme.subText}]}>{allRulesMet && direction ? `EXECUTE ($${activeStrategy.risk})` : !direction ? "SELECT DIRECTION" : "FORCE EXECUTE"}</Text></TouchableOpacity></View>)}
+      {view === 'active' && (<ScrollView contentContainerStyle={s.scrollContent}><Text style={s.screenTitle}>LIVE TRADES</Text>{strategyActive.map(trade => (<TouchableOpacity key={trade.id} onPress={() => setDetailModal({show: true, trade})} style={s.activeCard}><View style={s.activeHeader}><Text style={s.riskValue}>${trade.risk} RISK</Text><View style={[s.tag, trade.direction === 'LONG' ? s.tagGreen : s.tagRed]}><Text style={[s.tagText, {color: trade.direction === 'LONG' ? '#000' : '#FFF'}]}>{trade.direction}</Text></View></View><View style={s.progressBox}><View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8}}><Text style={s.label}>REALIZED: <Text style={s.profitValue}>+${trade.realizedProfit.toFixed(2)}</Text></Text><Text style={[s.label, {color: theme.text}]}>{trade.percentClosed}% CLOSED</Text></View><View style={s.progressBarBg}><View style={[s.progressBarFill, { width: `${trade.percentClosed}%` }]} /></View></View><View style={s.grid3}>{[25, 50, 75].map(p => (<TouchableOpacity key={p} onPress={() => openExecModal('PARTIAL', trade.id, p)} style={s.partialBtn}><Text style={s.partialBtnText}>+{p}%</Text></TouchableOpacity>))}</View><View style={{flexDirection: 'row', gap: 10, marginTop: 16}}><TouchableOpacity onPress={() => toggleBreakeven(trade.id)} style={[s.actionBtn, {flex: 1, backgroundColor: trade.isBreakeven ? theme.tint : theme.card, borderWidth: 1, borderColor: trade.isBreakeven ? theme.tint : theme.border}]}><Text style={{color: trade.isBreakeven ? theme.btnText : theme.text, fontWeight: '700'}}>MOVE SL TO BE</Text></TouchableOpacity><TouchableOpacity onPress={() => openExecModal('FULL', trade.id, 100 - trade.percentClosed)} style={[s.actionBtn, {flex: 1}]}><Text style={s.actionBtnText}>CLOSE FULL</Text></TouchableOpacity></View><View style={{flexDirection: 'row', gap: 10, marginTop: 8}}><TouchableOpacity onPress={() => setTagModal({show: true, tradeId: trade.id})} style={[s.actionBtn, {flex:1, borderColor: theme.border, borderWidth: 1, backgroundColor: 'transparent'}]}><Text style={{color: theme.text, fontWeight: '700'}}>TAGS</Text></TouchableOpacity><TouchableOpacity onPress={() => openExecModal('SL', trade.id, 0)} style={[s.actionBtn, {flex:1, borderColor: theme.danger, borderWidth: 2, backgroundColor: 'transparent'}]}><Text style={s.actionBtnTextRed}>{trade.isBreakeven ? "STOPPED AT BE" : "STOP LOSS"}</Text></TouchableOpacity></View></TouchableOpacity>))}{strategyActive.length === 0 && <View style={s.emptyState}><Feather name="crosshair" size={48} color={theme.subText} /><Text style={s.emptyText}>No live positions.</Text><TouchableOpacity onPress={() => setView('checklist')} style={s.scanBtn}><Text style={s.scanBtnText}>ENTER TRADE</Text></TouchableOpacity></View>}</ScrollView>)}
 
       {/* Strategy Switcher */}
       <Modal visible={strategyModal} transparent animationType="fade" onRequestClose={() => setStrategyModal(false)}>
@@ -1029,6 +1142,11 @@ const styles = (t: Record<string, string>) => StyleSheet.create({
   executeBoxReady: { backgroundColor: t.tint, borderColor: t.tint },
   executeBoxLocked: { backgroundColor: t.card },
   executeTitle: { fontSize: 18, fontWeight: '700', color: t.btnText },
+  executeBtnText: { color: t.btnText, fontWeight: '700', fontSize: 14 },
+  executeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, paddingHorizontal: 32, borderRadius: 16, marginTop: 8 },
+  executeBtnReady: { backgroundColor: t.tint },
+  executeBtnLocked: { backgroundColor: t.card, borderWidth: 1, borderColor: t.border },
+  dirToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 12, borderWidth: 1, borderColor: t.border, backgroundColor: t.card },
   lockedText: { color: t.subText, fontWeight: '600', marginTop: 8 },
   
   grid3: { flexDirection: 'row', gap: 8 },
@@ -1036,9 +1154,9 @@ const styles = (t: Record<string, string>) => StyleSheet.create({
   partialBtnText: { color: t.text, fontWeight: '600' },
   
   actionBtn: { paddingVertical: 16, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', backgroundColor: t.tint },
-  actionBtnText: { color: t.btnText, fontWeight: '700' },
-  actionBtnTextBlack: { color: t.btnText, fontWeight: '700' },
-  actionBtnTextRed: { color: t.danger, fontWeight: '700' },
+  actionBtnText: { color: t.btnText, fontWeight: '700', fontSize: 13 },
+  actionBtnTextBlack: { color: t.btnText, fontWeight: '700', fontSize: 13 },
+  actionBtnTextRed: { color: t.danger, fontWeight: '700', fontSize: 13 },
   
   modalOverlay: { flex: 1, backgroundColor: t.overlay, justifyContent: 'center', padding: 24 },
   modalContent: { backgroundColor: t.card, borderRadius: 24, padding: 24, borderWidth: 1, borderColor: t.border },
