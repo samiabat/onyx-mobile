@@ -138,13 +138,13 @@ export const BADGES: Badge[] = [
     if (history.length === 0) return false;
     const days = new Set(history.map(t => {
       const d = new Date(t.closedAt ?? t.id);
-      return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }));
     const sortedDays = [...days].sort();
     let maxStreak = 1, streak = 1;
     for (let i = 1; i < sortedDays.length; i++) {
-      const prev = new Date(sortedDays[i - 1]);
-      const curr = new Date(sortedDays[i]);
+      const prev = new Date(sortedDays[i - 1] + 'T00:00:00');
+      const curr = new Date(sortedDays[i] + 'T00:00:00');
       const diff = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
       if (Math.round(diff) === 1) { streak++; maxStreak = Math.max(maxStreak, streak); } else { streak = 1; }
     }
@@ -165,16 +165,14 @@ export const BADGES: Badge[] = [
     const sortedDays = Object.keys(dayCounts).sort();
     let streak = 0;
     for (let i = 0; i < sortedDays.length; i++) {
-      if (dayCounts[sortedDays[i]] <= 2) {
-        streak++;
-        if (streak >= 90) return true;
-        if (i > 0) {
-          const prev = new Date(sortedDays[i - 1]);
-          const curr = new Date(sortedDays[i]);
-          const diff = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
-          if (Math.round(diff) !== 1) streak = 1;
-        }
-      } else { streak = 0; }
+      if (dayCounts[sortedDays[i]] > 2) { streak = 0; continue; }
+      if (i === 0 || streak === 0) { streak = 1; } else {
+        const prev = new Date(sortedDays[i - 1] + 'T00:00:00');
+        const curr = new Date(sortedDays[i] + 'T00:00:00');
+        const diff = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+        streak = diff === 1 ? streak + 1 : 1;
+      }
+      if (streak >= 90) return true;
     }
     return false;
   }},
