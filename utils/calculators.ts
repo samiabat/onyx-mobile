@@ -1,3 +1,15 @@
+export interface Rule {
+  id: string;
+  text: string;
+}
+
+export interface Strategy {
+  id: string;
+  name: string;
+  risk: number;
+  rules: Rule[];
+}
+
 export interface Trade {
   id: number;
   strategyId: string;

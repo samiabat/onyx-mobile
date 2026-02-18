@@ -43,12 +43,35 @@ export function useFileSystem() {
     profile: any
   ): Promise<void> => {
     const allImagePaths = new Set<string>();
-    const collectImages = (list: Trade[]) => { list.forEach(t => t.journal?.forEach(j => { if (Array.isArray(j.imageUris)) j.imageUris.forEach(uri => allImagePaths.add(uri)); else if (j.imageUri) allImagePaths.add(j.imageUri); })); };
-    collectImages(history); collectImages(activeTrades);
+    const collectImages = (list: Trade[]) => {
+      for (const trade of list) {
+        for (const entry of trade.journal ?? []) {
+          if (Array.isArray(entry.imageUris)) {
+            entry.imageUris.forEach(uri => allImagePaths.add(uri));
+          } else if (entry.imageUri) {
+            allImagePaths.add(entry.imageUri);
+          }
+        }
+      }
+    };
+    collectImages(history);
+    collectImages(activeTrades);
+
     const imageBundle: Record<string, string> = {};
-    for (const uri of allImagePaths) { if (!uri) continue; try { const filename = uri.split('/').pop()!; const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 }); imageBundle[filename] = base64; } catch (err) { console.log("Skip:", uri); } }
+    for (const uri of allImagePaths) {
+      if (!uri) continue;
+      try {
+        const filename = uri.split('/').pop()!;
+        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+        imageBundle[filename] = base64;
+      } catch (err) {
+        console.log("Skip:", uri);
+      }
+    }
+
     const backupData = { history, activeTrades, strategies, tags, profile, imageBundle, timestamp: new Date().toISOString(), version: "4.1" };
-    const fileUri = ROOT_DIR + `ONYX_Backup_${Date.now()}.json`; await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backupData));
+    const fileUri = ROOT_DIR + `ONYX_Backup_${Date.now()}.json`;
+    await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backupData));
     if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(fileUri);
   };
 

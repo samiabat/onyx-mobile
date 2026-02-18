@@ -166,8 +166,8 @@ export function useTradeData() {
     return newStrat;
   };
 
-  const saveStrategyEdit = (editedStrat: any) => {
-    setStrategies(prev => prev.map(s => s.id === editedStrat.id ? editedStrat : s));
+  const saveStrategyEdit = (editedStrategy: any) => {
+    setStrategies(prev => prev.map(s => s.id === editedStrategy.id ? editedStrategy : s));
   };
 
   const deleteStrategy = (id: string) => {
