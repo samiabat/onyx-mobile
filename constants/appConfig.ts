@@ -50,19 +50,19 @@ export const DEFAULT_STRATEGY = {
 
 export const DEFAULT_TAGS = ['A+ Setup', 'Trend', 'Reversal', 'Impulse', 'Chop'];
 
-export const PREDEFINED_ASSETS = [
-  // Crypto
-  { name: 'Bitcoin', ticker: 'BTC', category: 'Crypto' },
-  { name: 'Ethereum', ticker: 'ETH', category: 'Crypto' },
-  { name: 'Solana', ticker: 'SOL', category: 'Crypto' },
-  { name: 'Ripple', ticker: 'XRP', category: 'Crypto' },
-  { name: 'Cardano', ticker: 'ADA', category: 'Crypto' },
-  { name: 'Polygon', ticker: 'MATIC', category: 'Crypto' },
-  { name: 'Dogecoin', ticker: 'DOGE', category: 'Crypto' },
-  { name: 'Avalanche', ticker: 'AVAX', category: 'Crypto' },
-  { name: 'Chainlink', ticker: 'LINK', category: 'Crypto' },
-  { name: 'Polkadot', ticker: 'DOT', category: 'Crypto' },
-  // Stocks
+export const PREDEFINED_ASSETS: { name: string; ticker: string; category: 'Crypto' | 'Stock' | 'Index'; coinloreId?: string }[] = [
+  // Crypto (with CoinLore IDs for live pricing)
+  { name: 'Bitcoin', ticker: 'BTC', category: 'Crypto', coinloreId: '90' },
+  { name: 'Ethereum', ticker: 'ETH', category: 'Crypto', coinloreId: '80' },
+  { name: 'Solana', ticker: 'SOL', category: 'Crypto', coinloreId: '48543' },
+  { name: 'Ripple', ticker: 'XRP', category: 'Crypto', coinloreId: '58' },
+  { name: 'Cardano', ticker: 'ADA', category: 'Crypto', coinloreId: '257' },
+  { name: 'Polygon', ticker: 'MATIC', category: 'Crypto', coinloreId: '3890' },
+  { name: 'Dogecoin', ticker: 'DOGE', category: 'Crypto', coinloreId: '2' },
+  { name: 'Avalanche', ticker: 'AVAX', category: 'Crypto', coinloreId: '44883' },
+  { name: 'Chainlink', ticker: 'LINK', category: 'Crypto', coinloreId: '1975' },
+  { name: 'Polkadot', ticker: 'DOT', category: 'Crypto', coinloreId: '54032' },
+  // Stocks (manual price tracking)
   { name: 'Apple', ticker: 'AAPL', category: 'Stock' },
   { name: 'Tesla', ticker: 'TSLA', category: 'Stock' },
   { name: 'Microsoft', ticker: 'MSFT', category: 'Stock' },
@@ -73,7 +73,7 @@ export const PREDEFINED_ASSETS = [
   { name: 'Netflix', ticker: 'NFLX', category: 'Stock' },
   { name: 'AMD', ticker: 'AMD', category: 'Stock' },
   { name: 'Palantir', ticker: 'PLTR', category: 'Stock' },
-  // Indices
+  // Indices (manual price tracking)
   { name: 'S&P 500', ticker: 'SPX', category: 'Index' },
   { name: 'Nasdaq 100', ticker: 'NDX', category: 'Index' },
   { name: 'Dow Jones', ticker: 'DJI', category: 'Index' },

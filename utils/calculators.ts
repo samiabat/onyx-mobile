@@ -63,6 +63,9 @@ export interface SimResult {
 export interface Investment {
   id: number;
   assetName: string;
+  ticker: string;
+  category: 'Crypto' | 'Stock' | 'Index' | 'Custom';
+  coinloreId?: string;
   entryPrice: number;
   entryDate: string;
   quantity: number;
