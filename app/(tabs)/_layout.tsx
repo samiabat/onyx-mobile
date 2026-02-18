@@ -833,7 +833,7 @@ export default function OnyxApp() {
           <View style={s.navHeader}><Text style={s.screenTitle}>ADD INVESTMENT</Text><TouchableOpacity onPress={() => { setAddInvestmentModal(false); setAssetSearch(''); }}><Feather name="x" size={24} color={theme.text} /></TouchableOpacity></View>
           <ScrollView contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
             <Text style={s.label}>SEARCH ASSET</Text>
-            <TextInput style={s.inputField} placeholder="Search e.g. BTC, TSLA, SPX..." placeholderTextColor={theme.subText} value={assetSearch} onChangeText={t => { setAssetSearch(t); if (!newInvestment.assetName) setNewInvestment(p => ({...p, assetName: ''})); }} />
+            <TextInput style={s.inputField} placeholder="Search e.g. BTC, TSLA, SPX..." placeholderTextColor={theme.subText} value={assetSearch} onChangeText={setAssetSearch} />
 
             {assetSearch.trim().length > 0 && (
               <View style={{backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginTop: 8, maxHeight: 200}}>
