@@ -22,5 +22,5 @@ export function PrimaryButton({ onPress, title, theme, style, textStyle, childre
 
 const styles = (t: Record<string, string>) => StyleSheet.create({
   actionBtn: { paddingVertical: 16, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', backgroundColor: t.tint, gap: 8 },
-  actionBtnText: { color: t.btnText, fontWeight: '700' },
+  actionBtnText: { color: t.btnText, fontWeight: '700', fontSize: 13 },
 });
