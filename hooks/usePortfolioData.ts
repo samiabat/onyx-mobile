@@ -155,6 +155,7 @@ export function usePortfolioData() {
 
   return {
     investments,
+    setInvestments,
     portfolioAnalytics,
     portfolioHistory,
     isRefreshing,

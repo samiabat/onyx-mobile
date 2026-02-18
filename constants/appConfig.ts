@@ -85,5 +85,42 @@ export const DEFAULT_PROFILE = {
   name: 'Trader',
   goal: 'Consistent Profitability',
   mantra: 'Plan the trade, trade the plan.',
-  biometricsEnabled: false
+  biometricsEnabled: false,
+  rank: 'Novice',
+  experience: '',
+  tradingStyle: [] as string[],
 };
+
+export const RANK_OPTIONS = ['Novice', 'Apprentice', 'Intermediate', 'Advanced', 'Funded Trader', 'Whale'];
+
+export const TRADING_STYLE_OPTIONS = ['Scalper', 'Day Trader', 'Swing', 'Position', 'Investor'];
+
+export interface Badge {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  check: (stats: { history: any[]; investments: any[] }) => boolean;
+}
+
+export const BACKUP_VERSION = "4.2";
+
+export const BADGES: Badge[] = [
+  { id: 'first_blood', name: 'First Blood', emoji: '🥇', description: 'Log your first trade.', check: ({ history }) => history.length >= 1 },
+  { id: 'sniper', name: 'Sniper', emoji: '🎯', description: 'Achieve a win with >1:5 RR.', check: ({ history }) => history.some(t => t.realizedProfit > 0 && t.risk > 0 && (t.realizedProfit / t.risk) > 5) },
+  { id: 'on_fire', name: 'On Fire', emoji: '🔥', description: '3 wins in a row.', check: ({ history }) => {
+    const sorted = [...history].sort((a, b) => (Number(a.closedAt ?? a.id) || 0) - (Number(b.closedAt ?? b.id) || 0));
+    let streak = 0;
+    for (const t of sorted) { if (t.realizedProfit > 0) { streak++; if (streak >= 3) return true; } else { streak = 0; } }
+    return false;
+  }},
+  { id: 'diamond_hands', name: 'Diamond Hands', emoji: '💎', description: 'Hold an investment for >30 days.', check: ({ investments }) => investments.some(inv => {
+    const entryDate = new Date(inv.entryDate);
+    const daysDiff = (Date.now() - entryDate.getTime()) / (1000 * 60 * 60 * 24);
+    return daysDiff > 30;
+  })},
+  { id: 'disciplined', name: 'Disciplined', emoji: '🛡️', description: 'Close 10 trades where you followed all rules.', check: ({ history }) => {
+    const taggedTrades = history.filter(t => t.tags && t.tags.length > 0);
+    return taggedTrades.length >= 10;
+  }},
+];
