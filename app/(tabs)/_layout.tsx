@@ -5,7 +5,8 @@ import {
   Alert,
   Dimensions,
   Image,
-  Modal, SafeAreaView,
+  KeyboardAvoidingView,
+  Modal, Platform, SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -19,12 +20,13 @@ import {
 import ViewShot, { captureRef } from 'react-native-view-shot';
 
 import { APP_NAME, THEMES, TRADES_PER_PAGE } from '@/constants/appConfig';
-import { runSimulation, type Rule, type Strategy } from '@/utils/calculators';
+import { runSimulation, type Rule, type Strategy, type Investment } from '@/utils/calculators';
 import { generatePlaybookPDF, generateDetailedPDF } from '@/services/pdfService';
 import { useBiometrics } from '@/hooks/useBiometrics';
 import { useFileSystem } from '@/hooks/useFileSystem';
 import { useTradeData } from '@/hooks/useTradeData';
 import { useAnalytics } from '@/hooks/useAnalytics';
+import { usePortfolioData } from '@/hooks/usePortfolioData';
 import { StatCard } from '@/components/StatCard';
 import { TradeListItem } from '@/components/TradeListItem';
 import { TagChip } from '@/components/TagChip';
@@ -52,6 +54,12 @@ export default function OnyxApp() {
 
   const theme = THEMES[themeMode];
 
+  // --- PORTFOLIO HOOK ---
+  const {
+    investments, portfolioAnalytics,
+    addInvestment, updateCurrentPrice, updateInvestmentImages, deleteInvestment,
+  } = usePortfolioData();
+
   // --- UI STATE ---
   const [checkedRules, setCheckedRules] = useState<Record<string, boolean>>({});
   const [execModal, setExecModal] = useState({ show: false, type: 'PARTIAL', tradeId: null as number | null, percent: 0, imageUris: [] as string[], note: '' });
@@ -70,7 +78,7 @@ export default function OnyxApp() {
   const [simResult, setSimResult] = useState<any>(null);
 
   // Social Share
-  const viewShotRef = useRef<any>();
+  const viewShotRef = useRef<any>(null);
   const [shareModal, setShareModal] = useState<{ show: boolean; trade: any }>({ show: false, trade: null });
 
   // Note Editing
@@ -79,6 +87,13 @@ export default function OnyxApp() {
   // Pagination & Performance
   const [historyPage, setHistoryPage] = useState(1);
   const [perfPeriod, setPerfPeriod] = useState('ALL');
+
+  // --- PORTFOLIO UI STATE ---
+  const [addInvestmentModal, setAddInvestmentModal] = useState(false);
+  const [newInvestment, setNewInvestment] = useState({ assetName: '', entryPrice: '', quantity: '', thesisNotes: '', imageUris: [] as string[] });
+  const [updatePriceModal, setUpdatePriceModal] = useState<{ show: boolean; investmentId: number | null }>({ show: false, investmentId: null });
+  const [newPrice, setNewPrice] = useState('');
+  const [investmentDetailModal, setInvestmentDetailModal] = useState<{ show: boolean; investment: Investment | null }>({ show: false, investment: null });
 
   // --- ANALYTICS ---
   const { analytics, periodTrades, modelStats } = useAnalytics(strategyHistory, tags, perfPeriod, selectedModelTags);
@@ -199,6 +214,55 @@ export default function OnyxApp() {
     setNewTagInput('');
   };
 
+  // --- PORTFOLIO HANDLERS ---
+  const onAddInvestment = () => {
+    const entryPrice = parseFloat(newInvestment.entryPrice);
+    const quantity = parseFloat(newInvestment.quantity);
+    if (!newInvestment.assetName.trim() || isNaN(entryPrice) || isNaN(quantity) || entryPrice <= 0 || quantity <= 0) {
+      Alert.alert("Invalid Input", "Please fill in asset name, entry price, and quantity.");
+      return;
+    }
+    addInvestment({
+      assetName: newInvestment.assetName.trim(),
+      entryPrice,
+      entryDate: new Date().toLocaleDateString(),
+      quantity,
+      thesisNotes: newInvestment.thesisNotes,
+      imageUris: newInvestment.imageUris,
+    });
+    setNewInvestment({ assetName: '', entryPrice: '', quantity: '', thesisNotes: '', imageUris: [] });
+    setAddInvestmentModal(false);
+  };
+
+  const onPickInvestmentImages = async () => {
+    const newUris = await pickImages();
+    if (newUris.length > 0) {
+      setNewInvestment(prev => ({ ...prev, imageUris: [...prev.imageUris, ...newUris] }));
+    }
+  };
+
+  const onPickDetailImages = async (investmentId: number) => {
+    const newUris = await pickImages();
+    if (newUris.length > 0) {
+      updateInvestmentImages(investmentId, newUris);
+      setInvestmentDetailModal(prev => {
+        if (!prev.investment) return prev;
+        return { ...prev, investment: { ...prev.investment, imageUris: [...prev.investment.imageUris, ...newUris] } };
+      });
+    }
+  };
+
+  const onUpdatePrice = () => {
+    const price = parseFloat(newPrice);
+    if (isNaN(price) || price <= 0 || !updatePriceModal.investmentId) {
+      Alert.alert("Invalid Price", "Enter a valid price.");
+      return;
+    }
+    updateCurrentPrice(updatePriceModal.investmentId, price);
+    setUpdatePriceModal({ show: false, investmentId: null });
+    setNewPrice('');
+  };
+
   const s = styles(theme);
   const allRulesMet = activeStrategy.rules.every((r: Rule) => checkedRules[r.id]);
   const visibleHistory = analytics.dailyStats.slice(0, historyPage * TRADES_PER_PAGE);
@@ -292,6 +356,13 @@ export default function OnyxApp() {
       {view === 'performance' && (
         <ScrollView contentContainerStyle={s.scrollContent}>
           <Text style={s.screenTitle}>PERFORMANCE</Text>
+
+          {/* REPORT BUTTONS - ANCHORED AT TOP */}
+          <View style={{flexDirection: 'row', gap: 12, marginBottom: 24}}>
+            <TouchableOpacity onPress={onGenerateDetailedPDF} style={[s.actionBtn, {flex: 1, gap: 8}]}><Feather name="file-text" size={18} color={theme.btnText} /><Text style={s.actionBtnText}>EXPORT PDF REPORT</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onGeneratePlaybookPDF} style={[s.actionBtn, {flex: 1, gap: 8, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border}]}><Feather name="book-open" size={18} color={theme.text} /><Text style={{color: theme.text, fontWeight: '700'}}>PLAYBOOK</Text></TouchableOpacity>
+          </View>
+
           <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24, backgroundColor: theme.card, padding: 4, borderRadius: 12}}>
             {['1D', '1W', '1M', '1Y', 'ALL'].map(p => (
               <TouchableOpacity key={p} onPress={() => setPerfPeriod(p)} style={[s.periodBtn, perfPeriod === p && {backgroundColor: theme.tint}]}>
@@ -325,7 +396,6 @@ export default function OnyxApp() {
 
           <View style={{gap: 12, marginTop: 24}}>
             <TouchableOpacity onPress={() => setSimModal(true)} style={s.actionBtn}><Feather name="trending-up" size={18} color={theme.btnText} /><Text style={s.actionBtnText}>SIMULATOR</Text></TouchableOpacity>
-            <TouchableOpacity onPress={onGeneratePlaybookPDF} style={s.actionBtn}><Feather name="book-open" size={18} color={theme.btnText} /><Text style={s.actionBtnText}>PLAYBOOK (PDF)</Text></TouchableOpacity>
           </View>
         </ScrollView>
       )}
@@ -346,6 +416,48 @@ export default function OnyxApp() {
             </View>
           </View>
           <TouchableOpacity onPress={() => setView('dashboard')} style={s.actionBtn}><Text style={s.actionBtnText}>SAVE SETTINGS</Text></TouchableOpacity>
+        </ScrollView>
+      )}
+
+      {/* VIEW: PORTFOLIO */}
+      {view === 'portfolio' && (
+        <ScrollView contentContainerStyle={s.scrollContent}>
+          <Text style={s.screenTitle}>PORTFOLIO</Text>
+
+          {/* PORTFOLIO ANALYTICS */}
+          <View style={s.statsRow}>
+            <StatCard label="TOTAL INVESTED" value={`$${portfolioAnalytics.totalInvested.toFixed(2)}`} valueColor={theme.text} theme={theme} />
+            <StatCard label="CURRENT VALUE" value={`$${portfolioAnalytics.currentValue.toFixed(2)}`} valueColor={theme.text} theme={theme} />
+          </View>
+          <View style={[s.statsRow, {marginTop: -12}]}>
+            <StatCard label="INVESTING P&L" value={`${portfolioAnalytics.totalPnL >= 0 ? '+' : ''}$${portfolioAnalytics.totalPnL.toFixed(2)}`} valueColor={portfolioAnalytics.totalPnL >= 0 ? theme.success : theme.danger} theme={theme} valueSize={20} />
+            <StatCard label="P&L %" value={`${portfolioAnalytics.totalPnLPercent >= 0 ? '+' : ''}${portfolioAnalytics.totalPnLPercent.toFixed(1)}%`} valueColor={portfolioAnalytics.totalPnLPercent >= 0 ? theme.success : theme.danger} theme={theme} valueSize={20} />
+          </View>
+
+          <TouchableOpacity onPress={() => setAddInvestmentModal(true)} style={[s.mainActionBtn, {marginBottom: 24}]}><Feather name="plus" size={20} color={theme.btnText} /><Text style={{color: theme.btnText, fontWeight: 'bold'}}>ADD INVESTMENT</Text></TouchableOpacity>
+
+          <Text style={s.sectionTitle}>HOLDINGS</Text>
+          <View style={s.tableCard}>
+            {investments.map(inv => {
+              const pnl = (inv.currentPrice - inv.entryPrice) * inv.quantity;
+              const pnlPercent = inv.entryPrice > 0 ? ((inv.currentPrice - inv.entryPrice) / inv.entryPrice) * 100 : 0;
+              return (
+                <TouchableOpacity key={inv.id} onPress={() => setInvestmentDetailModal({show: true, investment: inv})} style={{padding: 16, borderBottomWidth: 1, borderColor: theme.border}}>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                    <View>
+                      <Text style={{color: theme.text, fontWeight: '700', fontSize: 16}}>{inv.assetName}</Text>
+                      <Text style={{color: theme.subText, fontSize: 11, marginTop: 2}}>{inv.quantity} @ ${inv.entryPrice.toFixed(2)} • {inv.entryDate}</Text>
+                    </View>
+                    <View style={{alignItems: 'flex-end'}}>
+                      <Text style={{color: pnl >= 0 ? theme.success : theme.danger, fontWeight: '700', fontSize: 16}}>{pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</Text>
+                      <Text style={{color: pnl >= 0 ? theme.success : theme.danger, fontSize: 11}}>{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(1)}%</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+            {investments.length === 0 && <Text style={s.emptyText}>No investments logged yet.</Text>}
+          </View>
         </ScrollView>
       )}
 
@@ -408,6 +520,7 @@ export default function OnyxApp() {
 
       {/* --- UNIFIED EXECUTION MODAL --- */}
       <Modal visible={execModal.show} transparent animationType="fade" onRequestClose={() => setExecModal({show: false, type: 'PARTIAL', tradeId: null, percent: 0, imageUris: [], note: ''})}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
         <TouchableWithoutFeedback onPress={() => setExecModal({show: false, type: 'PARTIAL', tradeId: null, percent: 0, imageUris: [], note: ''})}>
           <View style={s.modalOverlay}>
             <TouchableWithoutFeedback>
@@ -446,6 +559,7 @@ export default function OnyxApp() {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* DETAIL MODAL */}
@@ -486,6 +600,7 @@ export default function OnyxApp() {
 
       {/* --- EDIT NOTE MODAL --- */}
       <Modal visible={editNoteModal.show} transparent animationType="fade">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
         <View style={s.modalOverlay}>
           <View style={s.modalContent}>
             <Text style={s.modalTitle}>EDIT NOTE</Text>
@@ -496,6 +611,7 @@ export default function OnyxApp() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* STANDARD VIEWS */}
@@ -602,9 +718,123 @@ export default function OnyxApp() {
         <View style={{flex: 1, backgroundColor: 'black'}}><TouchableOpacity style={{position: 'absolute', top: 40, right: 20, zIndex: 99}} onPress={() => setZoomImage(null)}><Feather name="x-circle" size={32} color="white" /></TouchableOpacity>{zoomImage && <Image source={{ uri: zoomImage }} style={{width, height}} resizeMode="contain" />}</View>
       </Modal>
 
+      {/* --- ADD INVESTMENT MODAL --- */}
+      <Modal visible={addInvestmentModal} animationType="slide" onRequestClose={() => setAddInvestmentModal(false)}>
+        <SafeAreaView style={s.container}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
+          <View style={s.navHeader}><Text style={s.screenTitle}>ADD INVESTMENT</Text><TouchableOpacity onPress={() => setAddInvestmentModal(false)}><Feather name="x" size={24} color={theme.text} /></TouchableOpacity></View>
+          <ScrollView contentContainerStyle={s.scrollContent}>
+            <Text style={s.label}>ASSET NAME / TICKER</Text>
+            <TextInput style={s.inputField} placeholder="e.g. Bitcoin, TSLA" placeholderTextColor={theme.subText} value={newInvestment.assetName} onChangeText={t => setNewInvestment(p => ({...p, assetName: t}))} />
+
+            <View style={{flexDirection: 'row', gap: 12, marginTop: 16}}>
+              <View style={{flex: 1}}><Text style={s.label}>ENTRY PRICE ($)</Text><TextInput keyboardType="numeric" style={s.inputField} placeholder="0.00" placeholderTextColor={theme.subText} value={newInvestment.entryPrice} onChangeText={t => setNewInvestment(p => ({...p, entryPrice: t}))} /></View>
+              <View style={{flex: 1}}><Text style={s.label}>QUANTITY</Text><TextInput keyboardType="numeric" style={s.inputField} placeholder="0" placeholderTextColor={theme.subText} value={newInvestment.quantity} onChangeText={t => setNewInvestment(p => ({...p, quantity: t}))} /></View>
+            </View>
+
+            <Text style={[s.label, {marginTop: 16}]}>THESIS NOTES</Text>
+            <TextInput multiline placeholder="Why did I buy this?" placeholderTextColor={theme.subText} value={newInvestment.thesisNotes} onChangeText={t => setNewInvestment(p => ({...p, thesisNotes: t}))} style={[s.inputField, {height: 80, textAlignVertical: 'top'}]} />
+
+            <TouchableOpacity onPress={onPickInvestmentImages} style={[s.imageBtn, {marginTop: 16}, newInvestment.imageUris.length > 0 ? s.imageBtnActive : null]}>
+              <Feather name="camera" size={20} color={newInvestment.imageUris.length > 0 ? theme.btnText : theme.text} />
+              <Text style={[s.imageBtnText, newInvestment.imageUris.length > 0 ? {color: theme.btnText} : null]}>{newInvestment.imageUris.length > 0 ? `${newInvestment.imageUris.length} IMAGES` : "ATTACH CHARTS / DATA"}</Text>
+            </TouchableOpacity>
+            {newInvestment.imageUris.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginTop: 8}}>
+                {newInvestment.imageUris.map((uri, i) => (
+                  <Image key={i} source={{uri}} style={{width: 80, height: 80, borderRadius: 8, marginRight: 8, backgroundColor: '#000'}} resizeMode="cover" />
+                ))}
+              </ScrollView>
+            )}
+
+            <TouchableOpacity onPress={onAddInvestment} style={[s.actionBtn, {marginTop: 24}]}><Text style={s.actionBtnText}>ADD TO PORTFOLIO</Text></TouchableOpacity>
+          </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* --- UPDATE PRICE MODAL --- */}
+      <Modal visible={updatePriceModal.show} transparent animationType="fade" onRequestClose={() => setUpdatePriceModal({show: false, investmentId: null})}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalContent}>
+            <Text style={s.modalTitle}>UPDATE PRICE</Text>
+            <TextInput autoFocus keyboardType="numeric" placeholder="0.00" placeholderTextColor={theme.subText} value={newPrice} onChangeText={setNewPrice} style={s.modalInput} />
+            <View style={s.modalBtns}>
+              <TouchableOpacity onPress={() => { setUpdatePriceModal({show: false, investmentId: null}); setNewPrice(''); }} style={s.modalCancel}><Text style={s.modalCancelText}>CANCEL</Text></TouchableOpacity>
+              <TouchableOpacity onPress={onUpdatePrice} style={s.modalConfirm}><Text style={s.modalConfirmText}>UPDATE</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* --- INVESTMENT DETAIL MODAL --- */}
+      <Modal visible={investmentDetailModal.show} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setInvestmentDetailModal({show: false, investment: null})}>
+        <View style={s.detailContainer}>
+          <View style={s.detailHeader}>
+            <Text style={s.detailTitle}>INVESTMENT DETAIL</Text>
+            <TouchableOpacity onPress={() => setInvestmentDetailModal({show: false, investment: null})}><Feather name="x" size={24} color={theme.text} /></TouchableOpacity>
+          </View>
+          {investmentDetailModal.investment && (() => {
+            const inv = investmentDetailModal.investment;
+            const pnl = (inv.currentPrice - inv.entryPrice) * inv.quantity;
+            const pnlPercent = inv.entryPrice > 0 ? ((inv.currentPrice - inv.entryPrice) / inv.entryPrice) * 100 : 0;
+            return (
+              <ScrollView contentContainerStyle={{padding: 24}}>
+                <Text style={{color: theme.text, fontSize: 28, fontWeight: '900'}}>{inv.assetName}</Text>
+                <Text style={{color: theme.subText, fontSize: 12, marginTop: 4}}>Added {inv.entryDate}</Text>
+
+                <View style={[s.activeCard, {marginTop: 20}]}>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
+                    <View><Text style={s.label}>ENTRY PRICE</Text><Text style={{color: theme.text, fontSize: 20, fontWeight: '700'}}>${inv.entryPrice.toFixed(2)}</Text></View>
+                    <View style={{alignItems: 'flex-end'}}><Text style={s.label}>CURRENT PRICE</Text><Text style={{color: theme.text, fontSize: 20, fontWeight: '700'}}>${inv.currentPrice.toFixed(2)}</Text></View>
+                  </View>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 16}}>
+                    <View><Text style={s.label}>QUANTITY</Text><Text style={{color: theme.text, fontSize: 16, fontWeight: '700'}}>{inv.quantity}</Text></View>
+                    <View style={{alignItems: 'flex-end'}}><Text style={s.label}>P&L</Text><Text style={{color: pnl >= 0 ? theme.success : theme.danger, fontSize: 16, fontWeight: '700'}}>{pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ({pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(1)}%)</Text></View>
+                  </View>
+                </View>
+
+                {inv.thesisNotes ? (
+                  <View style={{marginTop: 20}}>
+                    <Text style={s.sectionTitle}>THESIS</Text>
+                    <View style={[s.activeCard, {marginTop: 4}]}>
+                      <Text style={{color: theme.text, fontStyle: 'italic', lineHeight: 20}}>"{inv.thesisNotes}"</Text>
+                    </View>
+                  </View>
+                ) : null}
+
+                {inv.imageUris && inv.imageUris.length > 0 && (
+                  <View style={{marginTop: 20}}>
+                    <Text style={s.sectionTitle}>VISUAL THESIS</Text>
+                    {inv.imageUris.map((uri, i) => (
+                      <TouchableOpacity key={i} onPress={() => setZoomImage(uri)}>
+                        <Image source={{uri}} style={{width: '100%', height: 200, borderRadius: 12, marginTop: 8, backgroundColor: '#000'}} resizeMode="cover" />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                <TouchableOpacity onPress={() => onPickDetailImages(inv.id)} style={[s.imageBtn, {marginTop: 20}]}>
+                  <Feather name="camera" size={20} color={theme.text} />
+                  <Text style={s.imageBtnText}>ADD MORE CHARTS</Text>
+                </TouchableOpacity>
+
+                <View style={{flexDirection: 'row', gap: 12, marginTop: 20}}>
+                  <TouchableOpacity onPress={() => { setUpdatePriceModal({show: true, investmentId: inv.id}); setNewPrice(String(inv.currentPrice)); }} style={[s.actionBtn, {flex: 1, gap: 8}]}><Feather name="edit-3" size={18} color={theme.btnText} /><Text style={s.actionBtnText}>UPDATE PRICE</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => { deleteInvestment(inv.id); setInvestmentDetailModal({show: false, investment: null}); }} style={[s.actionBtn, {flex: 1, backgroundColor: theme.danger}]}><Feather name="trash-2" size={18} color="white" /><Text style={{color: 'white', fontWeight: '700'}}>DELETE</Text></TouchableOpacity>
+                </View>
+              </ScrollView>
+            );
+          })()}
+        </View>
+      </Modal>
+
       <View style={s.navBar}>
         <TouchableOpacity onPress={() => setView('dashboard')} style={s.navItem}><Feather name="grid" size={24} color={view === 'dashboard' ? theme.tint : theme.subText} /></TouchableOpacity>
         <TouchableOpacity onPress={() => setView('active')} style={s.navItem}><View><Feather name="activity" size={24} color={view === 'active' ? theme.tint : theme.subText} />{activeTrades.length > 0 && <View style={s.activeDot} />}</View></TouchableOpacity>
+        <TouchableOpacity onPress={() => setView('portfolio')} style={s.navItem}><Feather name="briefcase" size={24} color={view === 'portfolio' ? theme.tint : theme.subText} /></TouchableOpacity>
         <TouchableOpacity onPress={() => setView('performance')} style={s.navItem}><Feather name="bar-chart-2" size={24} color={view === 'performance' ? theme.tint : theme.subText} /></TouchableOpacity>
       </View>
     </SafeAreaView>
