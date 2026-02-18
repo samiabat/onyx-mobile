@@ -177,3 +177,22 @@ export function computePortfolioAnalytics(investments: Investment[]): PortfolioA
   const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
   return { totalInvested, currentValue, totalPnL, totalPnLPercent };
 }
+
+export interface DailyPnL {
+  date: string;
+  pnl: number;
+  trades: Trade[];
+}
+
+export function computeDailyPnL(trades: Trade[]): Record<string, DailyPnL> {
+  const dailyMap: Record<string, DailyPnL> = {};
+  for (const trade of trades) {
+    const dateKey = trade.dateStr;
+    if (!dailyMap[dateKey]) {
+      dailyMap[dateKey] = { date: dateKey, pnl: 0, trades: [] };
+    }
+    dailyMap[dateKey].pnl += trade.realizedProfit;
+    dailyMap[dateKey].trades.push(trade);
+  }
+  return dailyMap;
+}
