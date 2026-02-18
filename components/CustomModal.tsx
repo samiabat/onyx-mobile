@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal as RNModal, View, TouchableOpacity, TouchableWithoutFeedback, Text, StyleSheet } from 'react-native';
+import { Modal as RNModal, View, TouchableWithoutFeedback, Text, StyleSheet } from 'react-native';
 
 interface CustomModalProps {
   visible: boolean;
