@@ -60,6 +60,24 @@ export interface SimResult {
   expected: number;
 }
 
+export interface Investment {
+  id: number;
+  assetName: string;
+  entryPrice: number;
+  entryDate: string;
+  quantity: number;
+  thesisNotes: string;
+  imageUris: string[];
+  currentPrice: number;
+}
+
+export interface PortfolioAnalytics {
+  totalInvested: number;
+  currentValue: number;
+  totalPnL: number;
+  totalPnLPercent: number;
+}
+
 export function computeAnalytics(
   periodTrades: Trade[],
   allStrategyHistory: Trade[],
@@ -150,4 +168,12 @@ export function computeModelStats(
   const winRate = count > 0 ? (wins / count * 100) : 0;
   const netProfit = matchingTrades.reduce((acc, t) => acc + t.realizedProfit, 0);
   return { count, winRate, netProfit };
+}
+
+export function computePortfolioAnalytics(investments: Investment[]): PortfolioAnalytics {
+  const totalInvested = investments.reduce((acc, inv) => acc + (inv.entryPrice * inv.quantity), 0);
+  const currentValue = investments.reduce((acc, inv) => acc + (inv.currentPrice * inv.quantity), 0);
+  const totalPnL = currentValue - totalInvested;
+  const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
+  return { totalInvested, currentValue, totalPnL, totalPnLPercent };
 }
