@@ -50,6 +50,37 @@ export const DEFAULT_STRATEGY = {
 
 export const DEFAULT_TAGS = ['A+ Setup', 'Trend', 'Reversal', 'Impulse', 'Chop'];
 
+export const PREDEFINED_ASSETS = [
+  // Crypto
+  { name: 'Bitcoin', ticker: 'BTC', category: 'Crypto' },
+  { name: 'Ethereum', ticker: 'ETH', category: 'Crypto' },
+  { name: 'Solana', ticker: 'SOL', category: 'Crypto' },
+  { name: 'Ripple', ticker: 'XRP', category: 'Crypto' },
+  { name: 'Cardano', ticker: 'ADA', category: 'Crypto' },
+  { name: 'Polygon', ticker: 'MATIC', category: 'Crypto' },
+  { name: 'Dogecoin', ticker: 'DOGE', category: 'Crypto' },
+  { name: 'Avalanche', ticker: 'AVAX', category: 'Crypto' },
+  { name: 'Chainlink', ticker: 'LINK', category: 'Crypto' },
+  { name: 'Polkadot', ticker: 'DOT', category: 'Crypto' },
+  // Stocks
+  { name: 'Apple', ticker: 'AAPL', category: 'Stock' },
+  { name: 'Tesla', ticker: 'TSLA', category: 'Stock' },
+  { name: 'Microsoft', ticker: 'MSFT', category: 'Stock' },
+  { name: 'Amazon', ticker: 'AMZN', category: 'Stock' },
+  { name: 'Google', ticker: 'GOOGL', category: 'Stock' },
+  { name: 'NVIDIA', ticker: 'NVDA', category: 'Stock' },
+  { name: 'Meta', ticker: 'META', category: 'Stock' },
+  { name: 'Netflix', ticker: 'NFLX', category: 'Stock' },
+  { name: 'AMD', ticker: 'AMD', category: 'Stock' },
+  { name: 'Palantir', ticker: 'PLTR', category: 'Stock' },
+  // Indices
+  { name: 'S&P 500', ticker: 'SPX', category: 'Index' },
+  { name: 'Nasdaq 100', ticker: 'NDX', category: 'Index' },
+  { name: 'Dow Jones', ticker: 'DJI', category: 'Index' },
+  { name: 'Russell 2000', ticker: 'RUT', category: 'Index' },
+  { name: 'VIX', ticker: 'VIX', category: 'Index' },
+];
+
 export const DEFAULT_PROFILE = {
   name: 'Trader',
   goal: 'Consistent Profitability',

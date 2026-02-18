@@ -19,8 +19,8 @@ import {
 } from 'react-native';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 
-import { APP_NAME, THEMES, TRADES_PER_PAGE } from '@/constants/appConfig';
-import { runSimulation, type Rule, type Strategy, type Investment } from '@/utils/calculators';
+import { APP_NAME, THEMES, TRADES_PER_PAGE, PREDEFINED_ASSETS } from '@/constants/appConfig';
+import { runSimulation, computeDailyPnL, type Rule, type Strategy, type Investment, type DailyPnL } from '@/utils/calculators';
 import { generatePlaybookPDF, generateDetailedPDF } from '@/services/pdfService';
 import { useBiometrics } from '@/hooks/useBiometrics';
 import { useFileSystem } from '@/hooks/useFileSystem';
@@ -90,13 +90,30 @@ export default function OnyxApp() {
 
   // --- PORTFOLIO UI STATE ---
   const [addInvestmentModal, setAddInvestmentModal] = useState(false);
-  const [newInvestment, setNewInvestment] = useState({ assetName: '', entryPrice: '', quantity: '', thesisNotes: '', imageUris: [] as string[] });
+  const [newInvestment, setNewInvestment] = useState({ assetName: '', entryPrice: '', quantity: '', entryDate: '', thesisNotes: '', imageUris: [] as string[] });
   const [updatePriceModal, setUpdatePriceModal] = useState<{ show: boolean; investmentId: number | null }>({ show: false, investmentId: null });
   const [newPrice, setNewPrice] = useState('');
   const [investmentDetailModal, setInvestmentDetailModal] = useState<{ show: boolean; investment: Investment | null }>({ show: false, investment: null });
 
+  // --- ASSET SEARCH STATE ---
+  const [assetSearch, setAssetSearch] = useState('');
+  const filteredAssets = assetSearch.trim().length > 0
+    ? PREDEFINED_ASSETS.filter(a =>
+        a.name.toLowerCase().includes(assetSearch.toLowerCase()) ||
+        a.ticker.toLowerCase().includes(assetSearch.toLowerCase())
+      )
+    : [];
+  const assetSearchHasExactMatch = filteredAssets.some(
+    a => a.ticker.toLowerCase() === assetSearch.trim().toLowerCase() || a.name.toLowerCase() === assetSearch.trim().toLowerCase()
+  );
+
+  // --- P&L CALENDAR STATE ---
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [calendarDayModal, setCalendarDayModal] = useState<{ show: boolean; day: DailyPnL | null }>({ show: false, day: null });
+
   // --- ANALYTICS ---
   const { analytics, periodTrades, modelStats } = useAnalytics(strategyHistory, tags, perfPeriod, selectedModelTags);
+  const dailyPnLMap = computeDailyPnL(strategyHistory);
 
   useEffect(() => { initFileSystem(); loadData(); checkBiometrics(); }, []);
   useEffect(() => { saveData(); }, [history, activeTrades, strategies, currentStrategyId, themeMode, tags, profile]);
@@ -225,12 +242,13 @@ export default function OnyxApp() {
     addInvestment({
       assetName: newInvestment.assetName.trim(),
       entryPrice,
-      entryDate: new Date().toLocaleDateString(),
+      entryDate: newInvestment.entryDate.trim() || new Date().toLocaleDateString(),
       quantity,
       thesisNotes: newInvestment.thesisNotes,
       imageUris: newInvestment.imageUris,
     });
-    setNewInvestment({ assetName: '', entryPrice: '', quantity: '', thesisNotes: '', imageUris: [] });
+    setNewInvestment({ assetName: '', entryPrice: '', quantity: '', entryDate: '', thesisNotes: '', imageUris: [] });
+    setAssetSearch('');
     setAddInvestmentModal(false);
   };
 
@@ -392,6 +410,60 @@ export default function OnyxApp() {
             <View style={s.perfList}>
               <View style={[s.perfRow, {borderBottomWidth: 0}]}><Text style={s.perfLabel}>Total Trades</Text><Text style={s.perfValue}>{analytics.totalTrades}</Text></View>
             </View>
+          </View>
+
+          {/* P&L CALENDAR HEATMAP */}
+          <View style={s.perfSection}>
+            <Text style={s.sectionTitle}>P&L CALENDAR</Text>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+              <TouchableOpacity onPress={() => setCalendarMonth(prev => { const d = new Date(prev); d.setMonth(d.getMonth() - 1); return d; })}><Feather name="chevron-left" size={20} color={theme.text} /></TouchableOpacity>
+              <Text style={{color: theme.text, fontWeight: '700', fontSize: 14}}>{calendarMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</Text>
+              <TouchableOpacity onPress={() => setCalendarMonth(prev => { const d = new Date(prev); d.setMonth(d.getMonth() + 1); return d; })}><Feather name="chevron-right" size={20} color={theme.text} /></TouchableOpacity>
+            </View>
+            <View style={{flexDirection: 'row', marginBottom: 4}}>
+              {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
+                <View key={d} style={{flex: 1, alignItems: 'center'}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>{d}</Text></View>
+              ))}
+            </View>
+            {(() => {
+              const year = calendarMonth.getFullYear();
+              const month = calendarMonth.getMonth();
+              const firstDay = new Date(year, month, 1);
+              const lastDay = new Date(year, month + 1, 0);
+              const daysInMonth = lastDay.getDate();
+              let startDow = firstDay.getDay() - 1;
+              if (startDow < 0) startDow = 6;
+              const cells: (number | null)[] = [];
+              for (let i = 0; i < startDow; i++) cells.push(null);
+              for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+              while (cells.length % 7 !== 0) cells.push(null);
+              const weeks: (number | null)[][] = [];
+              for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+              return weeks.map((week, wi) => (
+                <View key={wi} style={{flexDirection: 'row', marginBottom: 4}}>
+                  {week.map((day, di) => {
+                    if (day === null) return <View key={di} style={{flex: 1, height: 44, margin: 1}} />;
+                    const dateObj = new Date(year, month, day);
+                    const dateKey = dateObj.toLocaleDateString();
+                    const dayData = dailyPnLMap[dateKey];
+                    const pnl = dayData ? dayData.pnl : 0;
+                    const hasTrades = !!dayData;
+                    const bgColor = !hasTrades ? theme.card : pnl > 0 ? theme.success + '33' : pnl < 0 ? theme.danger + '33' : theme.border;
+                    const borderCol = !hasTrades ? theme.border : pnl > 0 ? theme.success : pnl < 0 ? theme.danger : theme.border;
+                    return (
+                      <TouchableOpacity
+                        key={di}
+                        onPress={() => { if (hasTrades) setCalendarDayModal({ show: true, day: dayData }); }}
+                        style={{flex: 1, height: 44, margin: 1, backgroundColor: bgColor, borderRadius: 6, borderWidth: 1, borderColor: borderCol, alignItems: 'center', justifyContent: 'center'}}
+                      >
+                        <Text style={{color: theme.subText, fontSize: 9}}>{day}</Text>
+                        {hasTrades && <Text style={{color: pnl > 0 ? theme.success : pnl < 0 ? theme.danger : theme.subText, fontSize: 8, fontWeight: '700'}}>{pnl >= 0 ? '+' : ''}{pnl < 1000 && pnl > -1000 ? `$${pnl.toFixed(0)}` : `$${(pnl/1000).toFixed(1)}k`}</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ));
+            })()}
           </View>
 
           <View style={{gap: 12, marginTop: 24}}>
@@ -718,19 +790,85 @@ export default function OnyxApp() {
         <View style={{flex: 1, backgroundColor: 'black'}}><TouchableOpacity style={{position: 'absolute', top: 40, right: 20, zIndex: 99}} onPress={() => setZoomImage(null)}><Feather name="x-circle" size={32} color="white" /></TouchableOpacity>{zoomImage && <Image source={{ uri: zoomImage }} style={{width, height}} resizeMode="contain" />}</View>
       </Modal>
 
+      {/* --- P&L CALENDAR DAY DETAIL MODAL --- */}
+      <Modal visible={calendarDayModal.show} transparent animationType="fade" onRequestClose={() => setCalendarDayModal({ show: false, day: null })}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalContent}>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+              <Text style={s.modalTitle}>{calendarDayModal.day?.date || ''}</Text>
+              <TouchableOpacity onPress={() => setCalendarDayModal({ show: false, day: null })}><Feather name="x" size={22} color={theme.text} /></TouchableOpacity>
+            </View>
+            {calendarDayModal.day && (
+              <>
+                <View style={{backgroundColor: theme.bg, padding: 12, borderRadius: 12, marginBottom: 16, alignItems: 'center'}}>
+                  <Text style={{color: theme.subText, fontSize: 10, fontWeight: '600'}}>NET P&L</Text>
+                  <Text style={{color: calendarDayModal.day.pnl >= 0 ? theme.success : theme.danger, fontSize: 28, fontWeight: '900'}}>{calendarDayModal.day.pnl >= 0 ? '+' : ''}${calendarDayModal.day.pnl.toFixed(2)}</Text>
+                  <Text style={{color: theme.subText, fontSize: 10}}>{calendarDayModal.day.trades.length} trade{calendarDayModal.day.trades.length !== 1 ? 's' : ''}</Text>
+                </View>
+                <ScrollView style={{maxHeight: 250}}>
+                  {calendarDayModal.day.trades.map(trade => (
+                    <TouchableOpacity key={trade.id} onPress={() => { setCalendarDayModal({ show: false, day: null }); setDetailModal({ show: true, trade }); }} style={{padding: 12, borderBottomWidth: 1, borderColor: theme.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                      <View>
+                        <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                          <View style={[s.tag, trade.direction === 'LONG' ? s.tagGreen : s.tagRed]}><Text style={[s.tagText, {color: trade.direction === 'LONG' ? '#000' : '#FFF'}]}>{trade.direction}</Text></View>
+                          <Text style={{color: theme.subText, fontSize: 10}}>{trade.timeStr}</Text>
+                        </View>
+                        <Text style={{color: theme.subText, fontSize: 10, marginTop: 2}}>${trade.risk} Risk</Text>
+                      </View>
+                      <Text style={{color: trade.realizedProfit >= 0 ? theme.success : theme.danger, fontWeight: '700', fontSize: 16}}>{trade.realizedProfit >= 0 ? '+' : ''}${trade.realizedProfit.toFixed(2)}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            )}
+            <TouchableOpacity onPress={() => setCalendarDayModal({ show: false, day: null })} style={[s.actionBtn, {marginTop: 16}]}><Text style={s.actionBtnText}>CLOSE</Text></TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* --- ADD INVESTMENT MODAL --- */}
       <Modal visible={addInvestmentModal} animationType="slide" onRequestClose={() => setAddInvestmentModal(false)}>
         <SafeAreaView style={s.container}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
-          <View style={s.navHeader}><Text style={s.screenTitle}>ADD INVESTMENT</Text><TouchableOpacity onPress={() => setAddInvestmentModal(false)}><Feather name="x" size={24} color={theme.text} /></TouchableOpacity></View>
-          <ScrollView contentContainerStyle={s.scrollContent}>
-            <Text style={s.label}>ASSET NAME / TICKER</Text>
-            <TextInput style={s.inputField} placeholder="e.g. Bitcoin, TSLA" placeholderTextColor={theme.subText} value={newInvestment.assetName} onChangeText={t => setNewInvestment(p => ({...p, assetName: t}))} />
+          <View style={s.navHeader}><Text style={s.screenTitle}>ADD INVESTMENT</Text><TouchableOpacity onPress={() => { setAddInvestmentModal(false); setAssetSearch(''); }}><Feather name="x" size={24} color={theme.text} /></TouchableOpacity></View>
+          <ScrollView contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+            <Text style={s.label}>SEARCH ASSET</Text>
+            <TextInput style={s.inputField} placeholder="Search e.g. BTC, TSLA, SPX..." placeholderTextColor={theme.subText} value={assetSearch} onChangeText={setAssetSearch} />
+
+            {assetSearch.trim().length > 0 && (
+              <View style={{backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginTop: 8, maxHeight: 200}}>
+                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  {filteredAssets.map((asset, i) => (
+                    <TouchableOpacity key={i} onPress={() => { setNewInvestment(p => ({...p, assetName: `${asset.name} (${asset.ticker})`})); setAssetSearch(''); }} style={{padding: 12, borderBottomWidth: i < filteredAssets.length - 1 ? 1 : 0, borderColor: theme.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                      <View><Text style={{color: theme.text, fontWeight: '700'}}>{asset.ticker}</Text><Text style={{color: theme.subText, fontSize: 11}}>{asset.name}</Text></View>
+                      <View style={{backgroundColor: theme.border, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6}}><Text style={{color: theme.subText, fontSize: 9, fontWeight: '600'}}>{asset.category}</Text></View>
+                    </TouchableOpacity>
+                  ))}
+                  {!assetSearchHasExactMatch && (
+                    <TouchableOpacity onPress={() => { setNewInvestment(p => ({...p, assetName: assetSearch.trim()})); setAssetSearch(''); }} style={{padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                      <Feather name="plus-circle" size={16} color={theme.tint} />
+                      <Text style={{color: theme.tint, fontWeight: '700'}}>Add Custom: "{assetSearch.trim()}"</Text>
+                    </TouchableOpacity>
+                  )}
+                </ScrollView>
+              </View>
+            )}
+
+            {newInvestment.assetName ? (
+              <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: theme.tint + '22', padding: 10, borderRadius: 8, gap: 8}}>
+                <Feather name="check-circle" size={16} color={theme.tint} />
+                <Text style={{color: theme.tint, fontWeight: '700', flex: 1}}>{newInvestment.assetName}</Text>
+                <TouchableOpacity onPress={() => setNewInvestment(p => ({...p, assetName: ''}))}><Feather name="x" size={16} color={theme.subText} /></TouchableOpacity>
+              </View>
+            ) : null}
 
             <View style={{flexDirection: 'row', gap: 12, marginTop: 16}}>
               <View style={{flex: 1}}><Text style={s.label}>ENTRY PRICE ($)</Text><TextInput keyboardType="numeric" style={s.inputField} placeholder="0.00" placeholderTextColor={theme.subText} value={newInvestment.entryPrice} onChangeText={t => setNewInvestment(p => ({...p, entryPrice: t}))} /></View>
               <View style={{flex: 1}}><Text style={s.label}>QUANTITY</Text><TextInput keyboardType="numeric" style={s.inputField} placeholder="0" placeholderTextColor={theme.subText} value={newInvestment.quantity} onChangeText={t => setNewInvestment(p => ({...p, quantity: t}))} /></View>
             </View>
+
+            <Text style={[s.label, {marginTop: 16}]}>ENTRY DATE</Text>
+            <TextInput style={s.inputField} placeholder="e.g. 2/18/2026 (leave blank for today)" placeholderTextColor={theme.subText} value={newInvestment.entryDate} onChangeText={t => setNewInvestment(p => ({...p, entryDate: t}))} />
 
             <Text style={[s.label, {marginTop: 16}]}>THESIS NOTES</Text>
             <TextInput multiline placeholder="Why did I buy this?" placeholderTextColor={theme.subText} value={newInvestment.thesisNotes} onChangeText={t => setNewInvestment(p => ({...p, thesisNotes: t}))} style={[s.inputField, {height: 80, textAlignVertical: 'top'}]} />
@@ -843,8 +981,8 @@ export default function OnyxApp() {
 
 const styles = (t: Record<string, string>) => StyleSheet.create({
   container: { flex: 1, backgroundColor: t.bg, paddingTop: StatusBar.currentHeight },
-  scrollContent: { padding: 16, paddingBottom: 100 },
-  centerContent: { flex: 1, padding: 16, justifyContent: 'center', paddingBottom: 100 },
+  scrollContent: { padding: 16, paddingBottom: 130 },
+  centerContent: { flex: 1, padding: 16, justifyContent: 'center', paddingBottom: 130 },
   navHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center' },
   
   strategyBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: t.tint, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6 },
