@@ -204,7 +204,7 @@ export default function OnyxApp() {
   const onExportData = async () => {
     setLoading(true);
     try { await exportData(history, activeTrades, strategies, tags, profile, investments); }
-    catch (e: any) { Alert.alert("Export Failed", e.message); }
+    catch (e: any) { Alert.alert("Export Failed", "Export failed. Please ensure you have storage space."); }
     finally { setLoading(false); }
   };
 
@@ -218,7 +218,7 @@ export default function OnyxApp() {
         Alert.alert("Success", "Restored.");
         setTimeout(() => saveData(), 1000);
       }
-    } catch (e: any) { Alert.alert("Import Failed", e.message); }
+    } catch (e: any) { Alert.alert("Import Failed", "Could not restore backup. The file may be corrupted."); }
     finally { setLoading(false); }
   };
 
@@ -666,8 +666,7 @@ export default function OnyxApp() {
       {view === 'portfolio' && (
         <ScrollView contentContainerStyle={s.scrollContent}>
           {/* HEADER ROW */}
-          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
-            <Text style={s.screenTitle}>PORTFOLIO</Text>
+          <View style={{flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 12}}>
             <TouchableOpacity onPress={refreshCryptoPrices} style={{flexDirection: 'row', alignItems: 'center', gap: 4, opacity: isRefreshing ? 0.5 : 1}}>
               <Feather name="refresh-cw" size={14} color={theme.tint} />
               <Text style={{color: theme.tint, fontSize: 11, fontWeight: '600'}}>{isRefreshing ? 'UPDATING...' : 'REFRESH'}</Text>

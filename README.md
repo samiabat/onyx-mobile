@@ -1,51 +1,74 @@
-# Welcome to your Expo app 👋
+# ONYX Mobile
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**ONYX** is a local-first mobile trading journal built with React Native and Expo. It helps traders track trades, manage a portfolio, analyze performance, and build disciplined strategies — all with data stored on-device for full privacy.
 
-## Get started
+## Features
 
-1. Install dependencies
+- **Trade Journaling** — Log entries/exits, attach chart screenshots, and tag setups with custom model labels.
+- **Portfolio Tracker** — Track crypto and traditional investments with live price updates via CoinLore.
+- **Strategy Management** — Create, switch, and compare multiple trading strategies.
+- **Performance Analytics** — Win rate, profit factor, expectancy, equity curves, and P&L calendars.
+- **Data Portability** — Full JSON backup/restore with embedded images; PDF report generation.
+- **Biometric Lock** — Optional fingerprint/face unlock for privacy.
+- **Offline-First** — All data persisted locally with AsyncStorage and the device file system.
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18 or later recommended)
+- [Expo CLI](https://docs.expo.dev/get-started/installation/)
+- Expo SDK **52+**
+- (Optional) [EAS CLI](https://docs.expo.dev/build/introduction/) for cloud builds
+
+## Setup
+
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/samiabat/onyx-mobile.git
+   cd onyx-mobile
+   ```
+
+2. **Install dependencies**
 
    ```bash
    npm install
+   npx expo install
    ```
 
-2. Start the app
+3. **Start the development server**
 
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+   From here you can open the app on an Android emulator, iOS simulator, or a physical device via Expo Go.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Build Commands
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+### Local Android build
 
 ```bash
-npm run reset-project
+npx expo prebuild --clean --platform android
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Production build via EAS
 
-## Learn more
+```bash
+eas build -p android --profile production
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Project Structure
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```
+app/          — Screens & navigation (Expo Router file-based routing)
+components/   — Reusable UI components
+hooks/        — Custom React hooks (trade data, portfolio, file system, biometrics)
+services/     — External API integrations (CoinLore, PDF generation)
+utils/        — Pure utility/calculation functions
+constants/    — App-wide configuration and theme definitions
+assets/       — Images, fonts, and static resources
+```
 
-## Join the community
+## License
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
-# onyx-mobile
+This project is private and not currently published under an open-source license.
